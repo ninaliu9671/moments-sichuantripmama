@@ -1,0 +1,282 @@
+{
+  "title": "四川之旅 8日7晚",
+  "startDate": "2026-09-21",
+  "endDate": "2026-09-28",
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-09-21",
+      "title": "上海抵达成都",
+      "placeIds": ["chengdu"]
+    },
+    {
+      "day": 2,
+      "date": "2026-09-22",
+      "title": "成都动车至黄龙，夜宿九寨沟",
+      "placeIds": ["chengdu", "huanglong", "jiuzhaigou"]
+    },
+    {
+      "day": 3,
+      "date": "2026-09-23",
+      "title": "九寨沟一日游",
+      "placeIds": ["jiuzhaigou"]
+    },
+    {
+      "day": 4,
+      "date": "2026-09-24",
+      "title": "爱情海与三星堆，返回成都",
+      "placeIds": ["love-sea", "sanxingdui", "chengdu"]
+    },
+    {
+      "day": 5,
+      "date": "2026-09-25",
+      "title": "熊猫基地与都江堰",
+      "placeIds": ["panda-base", "dujiangyan"]
+    },
+    {
+      "day": 6,
+      "date": "2026-09-26",
+      "title": "峨眉山金顶",
+      "placeIds": ["emeishan"]
+    },
+    {
+      "day": 7,
+      "date": "2026-09-27",
+      "title": "峨眉山、乐山大佛，返回成都",
+      "placeIds": ["emeishan", "leshan", "chengdu"]
+    },
+    {
+      "day": 8,
+      "date": "2026-09-28",
+      "title": "成都返程",
+      "placeIds": ["chengdu"]
+    }
+  ],
+  "places": [
+    {
+      "id": "chengdu",
+      "name": "成都",
+      "subtitle": "抵达、住宿与返程城市，也是几段行程的集散点。",
+      "dayIndices": [1, 2, 4, 7, 8],
+      "mapX": 42,
+      "mapY": 57,
+      "subplaces": [
+        {
+          "id": "kuanzhai-alley",
+          "name": "宽窄巷子",
+          "subtitle": "D1自由活动可选的老城街巷。"
+        },
+        {
+          "id": "jinli-street",
+          "name": "锦里古街",
+          "subtitle": "D1自由活动可选的古街与小吃区域。"
+        },
+        {
+          "id": "wuhou-shrine",
+          "name": "武侯祠",
+          "subtitle": "D1自由活动可选的三国文化景点。"
+        },
+        {
+          "id": "dufu-cottage",
+          "name": "杜甫草堂",
+          "subtitle": "D1自由活动可选的人文园林。"
+        }
+      ]
+    },
+    {
+      "id": "huanglong",
+      "name": "黄龙",
+      "subtitle": "以钙化彩池、峡谷、雪山和森林景观为主的高原景区。",
+      "dayIndices": [2],
+      "mapX": 53,
+      "mapY": 23,
+      "subplaces": [
+        {
+          "id": "huanglong-main-valley",
+          "name": "黄龙主沟",
+          "subtitle": "行程中的主要游览区域，约4小时。"
+        }
+      ]
+    },
+    {
+      "id": "jiuzhaigou",
+      "name": "九寨沟",
+      "subtitle": "以彩色海子、瀑布、森林和藏羌风貌为主的景区。",
+      "dayIndices": [2, 3],
+      "mapX": 57,
+      "mapY": 15,
+      "subplaces": [
+        {
+          "id": "zezhawa-valley",
+          "name": "则查洼沟",
+          "subtitle": "九寨沟Y字形路线的一支，包含长海、五彩池等点位。"
+        },
+        {
+          "id": "shuzheng-valley",
+          "name": "树正沟",
+          "subtitle": "九寨沟主沟，分布树正群海、火花海、树正瀑布等。"
+        },
+        {
+          "id": "changhai",
+          "name": "长海",
+          "subtitle": "九寨沟内面积较大的高海拔湖泊。"
+        },
+        {
+          "id": "wucai-pond",
+          "name": "五彩池",
+          "subtitle": "则查洼沟内色彩明显的小型海子。"
+        },
+        {
+          "id": "nuorilang-waterfall",
+          "name": "诺日朗瀑布",
+          "subtitle": "靠近诺日朗游客中心的大型钙化瀑布。"
+        },
+        {
+          "id": "shuzheng-village",
+          "name": "树正寨",
+          "subtitle": "九寨沟内的藏族村寨点位。"
+        }
+      ]
+    },
+    {
+      "id": "love-sea",
+      "name": "爱情海",
+      "subtitle": "九寨沟附近的湖泊群景区，行程安排约1小时。",
+      "dayIndices": [4],
+      "mapX": 55,
+      "mapY": 19,
+      "subplaces": [
+        {
+          "id": "jinxiniu-lake",
+          "name": "金犀牛海",
+          "subtitle": "爱情海景区内的湖泊点位。"
+        },
+        {
+          "id": "fangcao-lake",
+          "name": "芳草海",
+          "subtitle": "爱情海景区内的湖泊点位。"
+        },
+        {
+          "id": "jiuqu-river",
+          "name": "九曲彩河",
+          "subtitle": "爱情海景区内的河道景观点位。"
+        }
+      ]
+    },
+    {
+      "id": "sanxingdui",
+      "name": "三星堆",
+      "subtitle": "广汉的遗址博物馆，展示古蜀文明出土文物。",
+      "dayIndices": [4],
+      "mapX": 45,
+      "mapY": 51,
+      "subplaces": [
+        {
+          "id": "sanxingdui-museum",
+          "name": "三星堆博物馆",
+          "subtitle": "D4计划游览约2小时；与黄龙或爱情海顺序可能按票务调整。"
+        }
+      ]
+    },
+    {
+      "id": "panda-base",
+      "name": "熊猫基地",
+      "subtitle": "成都北郊的大熊猫科研、保护和参观基地。",
+      "dayIndices": [5],
+      "mapX": 43,
+      "mapY": 53,
+      "subplaces": [
+        {
+          "id": "panda-tower",
+          "name": "熊猫塔",
+          "subtitle": "基地新区的地标建筑。"
+        }
+      ]
+    },
+    {
+      "id": "dujiangyan",
+      "name": "都江堰",
+      "subtitle": "李冰父子主持修建的古代水利工程景区。",
+      "dayIndices": [5],
+      "mapX": 36,
+      "mapY": 50,
+      "subplaces": [
+        {
+          "id": "yuzui",
+          "name": "鱼嘴",
+          "subtitle": "都江堰渠首工程的分水堤。"
+        },
+        {
+          "id": "feishayan",
+          "name": "飞沙堰",
+          "subtitle": "都江堰渠首工程的泄洪排沙设施。"
+        },
+        {
+          "id": "baopingkou",
+          "name": "宝瓶口",
+          "subtitle": "都江堰渠首工程的引水口。"
+        },
+        {
+          "id": "anlan-bridge",
+          "name": "安澜桥",
+          "subtitle": "景区内跨岷江的索桥点位。"
+        }
+      ]
+    },
+    {
+      "id": "emeishan",
+      "name": "峨眉山",
+      "subtitle": "佛教名山，D6登金顶，D7继续游览山中点位。",
+      "dayIndices": [6, 7],
+      "mapX": 38,
+      "mapY": 78,
+      "subplaces": [
+        {
+          "id": "jinding",
+          "name": "金顶",
+          "subtitle": "D6重点游览点，含华藏寺、金殿、观景台等。"
+        },
+        {
+          "id": "ecological-monkey-zone",
+          "name": "生态猴区",
+          "subtitle": "D7上午可游览的野生猴区。"
+        },
+        {
+          "id": "wannian-temple",
+          "name": "万年寺",
+          "subtitle": "D7路线中的寺院点位。"
+        },
+        {
+          "id": "qingyin-pavilion",
+          "name": "清音阁",
+          "subtitle": "峨眉山常见游览点，靠近山中步道。"
+        }
+      ]
+    },
+    {
+      "id": "leshan",
+      "name": "乐山",
+      "subtitle": "D7下午游览乐山大佛，可登山近看或提前选择船游。",
+      "dayIndices": [7],
+      "mapX": 43,
+      "mapY": 82,
+      "subplaces": [
+        {
+          "id": "leshan-giant-buddha",
+          "name": "乐山大佛",
+          "subtitle": "默认登山游览的唐代摩崖石刻大佛。"
+        },
+        {
+          "id": "leshan-boat-view",
+          "name": "乐山大佛白日游船",
+          "subtitle": "可提前1天告知导游改为船观。"
+        },
+        {
+          "id": "lingyun-temple",
+          "name": "凌云寺",
+          "subtitle": "乐山大佛景区内的寺院点位。"
+        }
+      ]
+    }
+  ]
+}

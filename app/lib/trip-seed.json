@@ -1,0 +1,221 @@
+{
+  "title": "四川之旅",
+  "startDate": "2026-09-21",
+  "endDate": "2026-09-28",
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-09-21",
+      "title": "上海抵达成都",
+      "placeIds": [
+        "chengdu"
+      ]
+    },
+    {
+      "day": 2,
+      "date": "2026-09-22",
+      "title": "成都动车至黄龙，夜宿九寨沟",
+      "placeIds": [
+        "chengdu",
+        "huanglong",
+        "jiuzhaigou"
+      ]
+    },
+    {
+      "day": 3,
+      "date": "2026-09-23",
+      "title": "九寨沟一日游",
+      "placeIds": [
+        "jiuzhaigou"
+      ]
+    },
+    {
+      "day": 4,
+      "date": "2026-09-24",
+      "title": "爱情海与三星堆，返回成都",
+      "placeIds": [
+        "love-sea",
+        "sanxingdui",
+        "chengdu"
+      ]
+    },
+    {
+      "day": 5,
+      "date": "2026-09-25",
+      "title": "熊猫基地与都江堰",
+      "placeIds": [
+        "panda-base",
+        "dujiangyan"
+      ]
+    },
+    {
+      "day": 6,
+      "date": "2026-09-26",
+      "title": "峨眉山金顶",
+      "placeIds": [
+        "emeishan"
+      ]
+    },
+    {
+      "day": 7,
+      "date": "2026-09-27",
+      "title": "峨眉山、乐山大佛，返回成都",
+      "placeIds": [
+        "emeishan",
+        "leshan",
+        "chengdu"
+      ]
+    },
+    {
+      "day": 8,
+      "date": "2026-09-28",
+      "title": "成都返程",
+      "placeIds": [
+        "chengdu"
+      ]
+    }
+  ],
+  "places": [
+    {
+      "id": "chengdu",
+      "name": "成都",
+      "subtitle": "抵达、住宿与返程城市，也是几段行程的集散点。",
+      "dayIndices": [
+        1,
+        2,
+        4,
+        7,
+        8
+      ],
+      "mapX": 42,
+      "mapY": 57,
+      "subplaces": [
+        "宽窄巷子",
+        "锦里古街",
+        "武侯祠",
+        "杜甫草堂"
+      ]
+    },
+    {
+      "id": "huanglong",
+      "name": "黄龙",
+      "subtitle": "以钙化彩池、峡谷、雪山和森林景观为主的高原景区。",
+      "dayIndices": [
+        2
+      ],
+      "mapX": 53,
+      "mapY": 23,
+      "subplaces": [
+        "黄龙主沟"
+      ]
+    },
+    {
+      "id": "jiuzhaigou",
+      "name": "九寨沟",
+      "subtitle": "以彩色海子、瀑布、森林和藏羌风貌为主的景区。",
+      "dayIndices": [
+        2,
+        3
+      ],
+      "mapX": 57,
+      "mapY": 15,
+      "subplaces": [
+        "则查洼沟",
+        "树正沟",
+        "长海",
+        "五彩池",
+        "诺日朗瀑布",
+        "树正寨"
+      ]
+    },
+    {
+      "id": "love-sea",
+      "name": "爱情海",
+      "subtitle": "九寨沟附近的湖泊群景区，行程安排约1小时。",
+      "dayIndices": [
+        4
+      ],
+      "mapX": 55,
+      "mapY": 19,
+      "subplaces": [
+        "金犀牛海",
+        "芳草海",
+        "九曲彩河"
+      ]
+    },
+    {
+      "id": "sanxingdui",
+      "name": "三星堆",
+      "subtitle": "广汉的遗址博物馆，展示古蜀文明出土文物。",
+      "dayIndices": [
+        4
+      ],
+      "mapX": 45,
+      "mapY": 51,
+      "subplaces": [
+        "三星堆博物馆"
+      ]
+    },
+    {
+      "id": "panda-base",
+      "name": "熊猫基地",
+      "subtitle": "成都北郊的大熊猫科研、保护和参观基地。",
+      "dayIndices": [
+        5
+      ],
+      "mapX": 43,
+      "mapY": 53,
+      "subplaces": [
+        "熊猫塔"
+      ]
+    },
+    {
+      "id": "dujiangyan",
+      "name": "都江堰",
+      "subtitle": "李冰父子主持修建的古代水利工程景区。",
+      "dayIndices": [
+        5
+      ],
+      "mapX": 36,
+      "mapY": 50,
+      "subplaces": [
+        "鱼嘴",
+        "飞沙堰",
+        "宝瓶口",
+        "安澜桥"
+      ]
+    },
+    {
+      "id": "emeishan",
+      "name": "峨眉山",
+      "subtitle": "佛教名山，D6登金顶，D7继续游览山中点位。",
+      "dayIndices": [
+        6,
+        7
+      ],
+      "mapX": 38,
+      "mapY": 78,
+      "subplaces": [
+        "金顶",
+        "生态猴区",
+        "万年寺",
+        "清音阁"
+      ]
+    },
+    {
+      "id": "leshan",
+      "name": "乐山",
+      "subtitle": "D7下午游览乐山大佛，可登山近看或提前选择船游。",
+      "dayIndices": [
+        7
+      ],
+      "mapX": 43,
+      "mapY": 82,
+      "subplaces": [
+        "乐山大佛",
+        "乐山大佛白日游船",
+        "凌云寺"
+      ]
+    }
+  ]
+}

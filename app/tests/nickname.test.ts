@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { emptyState } from '../lib/server/store';
+import { operate } from '../lib/server/service';
+test('join without invite, unique normalized nickname, cross-device login and rename', () => {
+ const state = emptyState();
+ const call = (path: string, body: Record<string, unknown>, cookie = '', method = 'POST') => operate(state, new Request('https://moments.test/api/' + path, {method, headers:{cookie:'moments_session='+cookie}}),path,body);
+ const first = call('auth/join',{name:'Alice',password:'pass1234',avatar:1});
+ assert.equal(first.status,undefined);
+ assert.equal(call('auth/join',{name:' alice ',password:'pass5678',avatar:2}).status,409);
+ const login = call('auth/login',{name:'ALICE',password:'pass1234'});
+ assert.ok(login.cookie); assert.notEqual(login.cookie,first.cookie);
+ assert.equal(call('auth/login',{name:'Alice',password:'incorrect'}).status,403);
+ const second = call('auth/join',{name:'Bob',password:'pass5678',avatar:2});
+ assert.equal(state.members[1].role,'traveler');
+ assert.equal(call('profile',{name:'ALICE',avatar:2},second.cookie,'PATCH').status,409);
+ assert.equal(call('profile',{name:'小山',avatar:2},second.cookie,'PATCH').status,undefined);
+ assert.ok(call('auth/login',{name:'小山',password:'pass5678'}).cookie);
+ assert.equal(call('auth/login',{name:'Bob',password:'pass5678'}).status,403);
+});
