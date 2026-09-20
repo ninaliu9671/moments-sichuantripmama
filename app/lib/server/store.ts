@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import type { Transaction } from '@cloudbase/database/dist/commonjs/transaction/index';
 import { resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { Pool, PoolClient } from 'pg';
 import seed from '../trip-seed.json';
 import type { Member, Trip, Place, Moment, Comment, Reaction, Media } from '../types';
 
@@ -19,8 +20,10 @@ export function emptyState(): State {
 }
 export function dataDir() { return resolve(process.env.MOMENTS_DATA_DIR || '.data'); }
 function cloudMode() { return process.env.MOMENTS_STORAGE === 'cloudbase'; }
+function postgresMode() { return process.env.MOMENTS_STORAGE === 'cloudbase-postgres'; }
+function cloudMediaMode() { return cloudMode() || postgresMode(); }
 function assertStorage() {
-  if (process.env.NODE_ENV === 'production' && !cloudMode() && process.env.MOMENTS_ALLOW_LOCAL !== 'true') throw new Error('生产环境必须配置 CloudBase 持久存储。');
+  if (process.env.NODE_ENV === 'production' && !cloudMediaMode() && process.env.MOMENTS_ALLOW_LOCAL !== 'true') throw new Error('生产环境必须配置持久存储。');
 }
 let cloudPromise: Promise<import('@cloudbase/node-sdk').CloudBase> | undefined;
 async function cloud() {
@@ -28,11 +31,59 @@ async function cloud() {
   cloudPromise ??= import('@cloudbase/node-sdk').then(({ default: sdk }) => sdk.init({ env: process.env.CLOUDBASE_ENV_ID!, ...(process.env.TENCENTCLOUD_SECRETID ? { secretId: process.env.TENCENTCLOUD_SECRETID, secretKey: process.env.TENCENTCLOUD_SECRETKEY } : {}) }));
   return cloudPromise;
 }
+let poolPromise: Promise<Pool> | undefined;
+async function postgres() {
+  if (!process.env.DATABASE_URL) throw new Error('未配置 DATABASE_URL');
+  poolPromise ??= import('pg').then(({ Pool }) => new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.MOMENTS_DATABASE_POOL_SIZE || 5),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  }));
+  return poolPromise;
+}
+async function rollback(client: PoolClient) {
+  try { await client.query('ROLLBACK'); }
+  catch { console.error('MOMENTS database rollback failed'); }
+}
 let queue = Promise.resolve();
-// All mutations, including auth failures, commit atomically. CloudBase transactions
+// All mutations, including auth failures, commit atomically. Database transactions
 // provide the same serialization across multiple container instances.
 export async function transact<T>(fn: (state: State) => T): Promise<T> {
   assertStorage();
+  if (postgresMode()) {
+    const client = await (await postgres()).connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`CREATE TABLE IF NOT EXISTS moments_app_state (
+        id text PRIMARY KEY,
+        payload jsonb NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      await client.query(
+        'INSERT INTO moments_app_state (id, payload) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO NOTHING',
+        ['sichuan-2026', JSON.stringify(emptyState())],
+      );
+      const result = await client.query<{ payload: State }>(
+        'SELECT payload FROM moments_app_state WHERE id = $1 FOR UPDATE',
+        ['sichuan-2026'],
+      );
+      const state = result.rows[0]?.payload;
+      if (!state) throw new Error('旅行数据初始化失败');
+      const value = fn(state);
+      const payload = JSON.stringify(state);
+      if (Buffer.byteLength(payload) > 12 * 1024 * 1024) throw new Error('旅行数据已达到当前容量，请联系管理员扩容后重试。');
+      await client.query(
+        'UPDATE moments_app_state SET payload = $2::jsonb, updated_at = now() WHERE id = $1',
+        ['sichuan-2026', payload],
+      );
+      await client.query('COMMIT');
+      return value;
+    } catch (error) {
+      await rollback(client);
+      throw error;
+    } finally { client.release(); }
+  }
   if (cloudMode()) {
     const db = (await cloud()).database();
     return db.runTransaction(async (tx: Transaction) => {
@@ -66,14 +117,14 @@ export async function transact<T>(fn: (state: State) => T): Promise<T> {
 }
 export async function writeMedia(id: string, bytes: Buffer): Promise<string> {
   assertStorage();
-  if (cloudMode()) return (await (await cloud()).uploadFile({ cloudPath: `moments/${id}`, fileContent: bytes })).fileID;
+  if (cloudMediaMode()) return (await (await cloud()).uploadFile({ cloudPath: `moments/${id}`, fileContent: bytes })).fileID;
   await mkdir(join(dataDir(), 'media'), { recursive: true });
   await writeFile(join(dataDir(), 'media', id), bytes);
   return id;
 }
 export async function readMedia(objectKey: string): Promise<Buffer> {
   assertStorage();
-  if (cloudMode()) {
+  if (cloudMediaMode()) {
     const result = await (await cloud()).downloadFile({ fileID: objectKey });
     if (!Buffer.isBuffer(result.fileContent)) throw new Error('媒体下载失败');
     return result.fileContent;
@@ -83,7 +134,7 @@ export async function readMedia(objectKey: string): Promise<Buffer> {
 }
 export async function deleteMedia(objectKey: string): Promise<void> {
   assertStorage();
-  if (cloudMode()) { await (await cloud()).deleteFile({ fileList: [objectKey] }); return; }
+  if (cloudMediaMode()) { await (await cloud()).deleteFile({ fileList: [objectKey] }); return; }
   if (!/^[\w-]+$/.test(objectKey)) throw new Error('无效的媒体路径');
   await unlink(join(dataDir(), 'media', objectKey));
 }

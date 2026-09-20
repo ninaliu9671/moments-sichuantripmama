@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   distDir: process.env.MOMENTS_BUILD_DIR || '.next',
   output: 'standalone',
-  serverExternalPackages: ['@cloudbase/node-sdk'],
+  serverExternalPackages: ['@cloudbase/node-sdk', 'pg'],
   poweredByHeader: false,
   async headers() {
     return [{ source: '/:path*', headers: [

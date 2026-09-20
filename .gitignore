@@ -16,6 +16,7 @@
 **/.codex/
 **/.agents/
 asset-production/
+tmp/pdfs/
 *.docx
 *.pdf
 设计图.png

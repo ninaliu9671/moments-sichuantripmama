@@ -10,6 +10,15 @@
 - 本地来源检查允许同端口 localhost/127.0.0.1 别名；线上仍严格匹配 MOMENTS_PUBLIC_URL。
 - 浏览器隔离验收：注册接口、昵称登录、文字发布、足迹、个人管理已走通。
 - 本地预览 5173 使用 .data-preview，隔离验收 5174 使用 .data-qa；均不提交 Git。
-- 头像仍为文字和颜色占位，尚未完成最终插画；iPhone/Android 媒体实机验收及 CloudBase 线上验收待完成。
+- 已接入 16 个卡通成年/中老年人物头像和可视选择器；iPhone/Android 媒体实机验收及 CloudBase 线上验收待完成。
 
 取消邀请后，任何获得网址的人都可以注册并浏览本旅行。应仅向参与者分享网址。正式发布前由发起人先注册管理员账号。
+
+## 本轮反馈落实
+
+- 回复留言会滚动并聚焦输入框，显示回复对象；浏览器实测发送成功并关联原留言。
+- 头像注册选择、资料选择及人物展示已实测；typecheck、18 项测试、生产构建通过。
+- PDF 已提取为 docs/itinerary-research.md；地图概念稿在 docs/design/sichuan-route-concept-v2.png，尚未接入正式页面。后续建议采用每日动态路线覆盖层，确保顺序可调整；生成图只作视觉预览，不作导航依据。
+- 用户提供 CloudBase 环境 sichuantripmama-d8furc3w318e17b0；控制台已确认上海区域、体验版、到期 2027-03-19 23:59:59。尚未部署本项目。
+- 已新增现有 CloudBase PostgreSQL 的生产存储适配，使用独立 JSONB 状态表和行锁事务；待配置连接串、云存储密钥并完成云端验收。
+- PostgreSQL 适配完成后已通过 typecheck、18 项测试、Lint（仅 4 项原生图片性能提示）和 production build；本机未安装 Docker，未做镜像级构建。
