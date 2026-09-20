@@ -22,3 +22,4 @@
 - 用户提供 CloudBase 环境 sichuantripmama-d8furc3w318e17b0；控制台已确认上海区域、体验版、到期 2027-03-19 23:59:59。尚未部署本项目。
 - 已新增现有 CloudBase PostgreSQL 的生产存储适配，使用独立 JSONB 状态表和行锁事务；待配置连接串、云存储密钥并完成云端验收。
 - PostgreSQL 适配完成后已通过 typecheck、18 项测试、Lint（仅 4 项原生图片性能提示）和 production build；本机未安装 Docker，未做镜像级构建。
+- 本地 production server 冒烟通过：首页、既有图文音视频记录、头像和底部导航均正常加载；CloudBase 应使用 Dockerfile 中的 standalone 启动入口。

@@ -25,7 +25,7 @@
 - [CloudBase 价格文档](https://cloud.tencent.com/document/product/876/75213)
 - [CloudBase 环境说明](https://cloud.tencent.com/document/product/876/46895)
 
-应用需要 Node.js 22、`npm run build` 产物和一个 Node 服务，启动命令为 `npm run start`，本地端口为 3000；Docker 使用平台注入的 PORT，默认 3000。生产环境必须设置：
+应用需要 Node.js 22 和 `npm run build` 产物。CloudBase 云托管应直接使用 `app/Dockerfile`：容器入口是 standalone 产物的 `node server.js`，读取平台注入的 `PORT`，默认 3000。非 Docker 本地冒烟可使用 `npm run start`。生产环境必须设置：
 
 ```text
 MOMENTS_STORAGE=cloudbase-postgres
