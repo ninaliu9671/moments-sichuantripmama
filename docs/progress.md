@@ -25,3 +25,4 @@
 - PostgreSQL 适配完成后已通过 typecheck、18 项测试、Lint（仅 4 项原生图片性能提示）和 production build；本机未安装 Docker，未做镜像级构建。
 - 本地 production server 冒烟通过：首页、既有图文音视频记录、头像和底部导航均正常加载；CloudBase 应使用 Dockerfile 中的 standalone 启动入口。
 - 行程页面完成后已通过 typecheck、20 项测试、Lint（仅 4 项既有图片提示）和 production build；本地浏览器实测日期切换、详情展开、地图高亮及 PDF / 图片资源 200 响应正常。
+- 原始行程单改为站内逐页阅读：顶部固定“关闭”、底部固定“返回行程”，支持 Esc、焦点约束和关闭后焦点恢复；25 页已转换为按需加载的页面图片，避免手机内置浏览器无法嵌入 PDF。

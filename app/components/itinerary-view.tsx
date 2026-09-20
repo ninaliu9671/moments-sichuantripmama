@@ -1,17 +1,21 @@
 'use client';
 
 import Image from 'next/image';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   BedDouble,
   BusFront,
   CalendarDays,
   ChevronDown,
   CircleAlert,
   Clock3,
+  ExternalLink,
   FileText,
   MapPinned,
   Sparkles,
   Utensils,
+  X,
 } from 'lucide-react';
 import { cnDate, type Place, type Trip } from '@/lib/types';
 import { getItineraryDetails, itineraryDays, itineraryMapPoints } from '@/lib/itinerary';
@@ -52,6 +56,33 @@ function Fact({ icon, label, children }: { icon: React.ReactNode; label: string;
 }
 
 function TodayView({ trip, selectedDay, onSelectDay }: Omit<ItineraryViewProps, 'mode' | 'places'>) {
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const pdfDialogRef = useRef<HTMLDivElement>(null);
+  const pdfCloseRef = useRef<HTMLButtonElement>(null);
+  const pdfTriggerRef = useRef<HTMLButtonElement>(null);
+  const closePdf = useCallback(() => {
+    setPdfOpen(false);
+    window.requestAnimationFrame(() => pdfTriggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!pdfOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    pdfCloseRef.current?.focus();
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closePdf();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [closePdf, pdfOpen]);
+
   const day = trip.days.find((item) => item.day === selectedDay) ?? trip.days[0];
   const details = getItineraryDetails(day?.day);
   if (!day || !details) {
@@ -114,13 +145,84 @@ function TodayView({ trip, selectedDay, onSelectDay }: Omit<ItineraryViewProps, 
             <h2 id="cautions-title">出发前提醒</h2>
             <ul>{details.cautions.map((item) => <li key={item}>{item}</li>)}</ul>
           </section>
-          <a className="itinerary-pdf-link" href="/itinerary.pdf" target="_blank" rel="noreferrer">
+          <button ref={pdfTriggerRef} className="itinerary-pdf-link" type="button" onClick={() => setPdfOpen(true)}>
             <FileText aria-hidden="true" />
             <span><strong>查看原始行程单</strong><small>25 页 PDF · 用于核对合同与最终安排</small></span>
-            <span aria-hidden="true">↗</span>
-          </a>
+            <span aria-hidden="true">›</span>
+          </button>
         </div>
       </details>
+
+      {pdfOpen && (
+        <div className="pdf-preview-overlay">
+          <div
+            ref={pdfDialogRef}
+            className="pdf-preview-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdf-preview-title"
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab') return;
+              const focusable = pdfDialogRef.current?.querySelectorAll<HTMLElement>(
+                'button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+              );
+              if (!focusable?.length) return;
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
+          >
+            <header className="pdf-preview-toolbar">
+              <div>
+                <p id="pdf-preview-title">原始行程单</p>
+                <small>25 页 PDF</small>
+              </div>
+              <div className="pdf-preview-actions">
+                <a href="/itinerary.pdf" target="_blank" rel="noreferrer">
+                  <ExternalLink aria-hidden="true" />
+                  <span>浏览器打开</span>
+                </a>
+                <button ref={pdfCloseRef} type="button" onClick={closePdf}>
+                  <X aria-hidden="true" />
+                  <span>关闭</span>
+                </button>
+              </div>
+            </header>
+            <div className="pdf-preview-pages" aria-label="行程单正文">
+              {Array.from({ length: 25 }, (_, index) => {
+                const page = index + 1;
+                const filename = String(page).padStart(2, '0');
+                return (
+                  <figure key={page}>
+                    <Image
+                      src={`/itinerary-pages/page-${filename}.jpg`}
+                      alt={`原始行程单第 ${page} 页`}
+                      width={1200}
+                      height={1697}
+                      sizes="(max-width: 980px) 100vw, 940px"
+                      priority={page === 1}
+                      unoptimized
+                    />
+                    <figcaption>第 {page} / 25 页</figcaption>
+                  </figure>
+                );
+              })}
+            </div>
+            <footer className="pdf-preview-footer">
+              <button type="button" onClick={closePdf}>
+                <ArrowLeft aria-hidden="true" />
+                返回行程
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
