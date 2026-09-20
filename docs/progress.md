@@ -18,8 +18,10 @@
 
 - 回复留言会滚动并聚焦输入框，显示回复对象；浏览器实测发送成功并关联原留言。
 - 头像注册选择、资料选择及人物展示已实测；typecheck、18 项测试、生产构建通过。
-- PDF 已提取为 docs/itinerary-research.md；地图概念稿在 docs/design/sichuan-route-concept-v2.png，尚未接入正式页面。后续建议采用每日动态路线覆盖层，确保顺序可调整；生成图只作视觉预览，不作导航依据。
+- 已把 8 天行程接入正式页面：登录后默认打开“今天”，可切换日期查看集合、交通、餐食、住宿和时间安排；“展开详情”包含景点、已含内容、自费、注意事项及 25 页原始 PDF 入口。
+- 已新增“全程”导航，手绘概念图上按日期动态高亮当天路线和地点；路线覆盖层来自结构化行程数据，底图只表示相对方位且明确不用于导航。
 - 用户提供 CloudBase 环境 sichuantripmama-d8furc3w318e17b0；控制台已确认上海区域、体验版、到期 2027-03-19 23:59:59。尚未部署本项目。
 - 已新增现有 CloudBase PostgreSQL 的生产存储适配，使用独立 JSONB 状态表和行锁事务；待配置连接串、云存储密钥并完成云端验收。
 - PostgreSQL 适配完成后已通过 typecheck、18 项测试、Lint（仅 4 项原生图片性能提示）和 production build；本机未安装 Docker，未做镜像级构建。
 - 本地 production server 冒烟通过：首页、既有图文音视频记录、头像和底部导航均正常加载；CloudBase 应使用 Dockerfile 中的 standalone 启动入口。
+- 行程页面完成后已通过 typecheck、20 项测试、Lint（仅 4 项既有图片提示）和 production build；本地浏览器实测日期切换、详情展开、地图高亮及 PDF / 图片资源 200 响应正常。
