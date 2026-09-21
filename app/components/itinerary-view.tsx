@@ -55,7 +55,7 @@ function Fact({ icon, label, children }: { icon: React.ReactNode; label: string;
   );
 }
 
-function TodayView({ trip, selectedDay, onSelectDay }: Omit<ItineraryViewProps, 'mode' | 'places'>) {
+function TodayView({ trip, places, selectedDay, onSelectDay }: Omit<ItineraryViewProps, 'mode'>) {
   const [pdfOpen, setPdfOpen] = useState(false);
   const pdfDialogRef = useRef<HTMLDivElement>(null);
   const pdfCloseRef = useRef<HTMLButtonElement>(null);
@@ -99,6 +99,37 @@ function TodayView({ trip, selectedDay, onSelectDay }: Omit<ItineraryViewProps, 
       </div>
 
       <DayPicker trip={trip} selectedDay={selectedDay} onSelectDay={onSelectDay} />
+
+      <section className="today-route-panel" aria-labelledby="today-route-title">
+        <div className="today-route-panel-heading">
+          <div>
+            <p className="eyebrow">ROUTE · 当天位置</p>
+            <h2 id="today-route-title">第 {day.day} 天路线</h2>
+          </div>
+          <span className="today-route-badge">D{day.day}</span>
+        </div>
+        <div className="illustrated-route-map today-route-map" aria-label={`第 ${day.day} 天路线：${details.route}`}>
+          <Image src="/assets/sichuan-route-concept-v2.png" alt="四川各景点相对方位的手绘概念图" width={1080} height={1470} priority />
+          <svg className="route-overlay" viewBox="0 0 100 136.11" aria-hidden="true">
+            {itineraryDays.map((item) => {
+              const points = item.routePlaceIds.map((id) => itineraryMapPoints[id]).filter(Boolean);
+              if (points.length < 2) return null;
+              return <polyline key={item.day} className={item.day === selectedDay ? 'active' : ''} points={points.map((point) => `${point.x},${(point.y * 1.3611).toFixed(2)}`).join(' ')} />;
+            })}
+            {details.routePlaceIds.map((id, index) => {
+              const point = itineraryMapPoints[id];
+              return point ? <circle key={`${id}-${index}`} cx={point.x} cy={(point.y * 1.3611).toFixed(2)} r="2.3" /> : null;
+            })}
+          </svg>
+        </div>
+        <p className="today-route-caption">{details.route}</p>
+        <div className="route-place-list">
+          {details.routePlaceIds.map((id, index) => (
+            <span key={`${id}-${index}`}>{places.find((place) => place.id === id)?.name ?? id}{index < details.routePlaceIds.length - 1 && <b aria-hidden="true">→</b>}</span>
+          ))}
+        </div>
+        <p className="map-disclaimer"><MapPinned aria-hidden="true" />地图表示相对方位，不用于导航；动车、天气和票务变化以导游当天通知为准。</p>
+      </section>
 
       {details.changeNote && <div className="itinerary-change-note"><CircleAlert aria-hidden="true" /><p>{details.changeNote}</p></div>}
 
@@ -278,5 +309,5 @@ function RouteView({ trip, places, selectedDay, onSelectDay }: Omit<ItineraryVie
 }
 
 export function ItineraryView(props: ItineraryViewProps) {
-  return props.mode === 'today' ? <TodayView {...props} /> : <RouteView {...props} />;
+  return props.mode === 'route' ? <RouteView {...props} /> : <TodayView {...props} />;
 }
