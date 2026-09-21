@@ -1,31 +1,34 @@
 import { apiUrl } from './api-base';
 
-type Ticket = { token: string; objectKey: string; error?: string };
+type UploadResult = { objectKey?: string; error?: string };
 
-async function uploadIdentity(file: File): Promise<Ticket> {
-  const response = await fetch(apiUrl('/api/upload-ticket'), {
-    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mime: file.type }),
+function uploadFile(file: File, onProgress?: (percent: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PUT', apiUrl('/media-upload'));
+    request.timeout = 10 * 60 * 1000;
+    request.setRequestHeader('Content-Type', file.type.split(';')[0] || 'application/octet-stream');
+    request.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress?.(Math.min(99, Math.round(event.loaded * 100 / event.total)));
+    };
+    request.onload = () => {
+      let result: UploadResult = {};
+      try { result = JSON.parse(request.responseText) as UploadResult; } catch { /* Keep a useful status error. */ }
+      if (request.status >= 200 && request.status < 300 && result.objectKey) resolve(result.objectKey);
+      else reject(new Error(result.error || `文件上传失败（HTTP ${request.status}）。`));
+    };
+    request.onerror = () => reject(new Error('无法连接上传服务，请检查网络后重试。'));
+    request.ontimeout = () => reject(new Error('上传等待超时，请检查网络后重试。'));
+    request.send(file);
   });
-  const data = await response.json().catch(() => ({})) as Partial<Ticket>;
-  if (!response.ok || !data.token || !data.objectKey) {
-    throw new Error(data.error || '未能取得上传权限，请重新登录后再试。');
-  }
-  return data as Ticket;
 }
 
-/** Upload to the private PG bucket; only the user's own folder is writable by RLS. */
+/** Stream media through the same-origin HTTP function, then register its hash. */
 export async function uploadToStorage(file: File, onProgress?: (percent: number) => void) {
   const hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
   const sha256 = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-  const identity = await uploadIdentity(file);
-  const { default: cloudbase } = await import('@cloudbase/js-sdk');
-  const envId = process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID;
-  if (!envId) throw new Error('未配置云环境 ID，无法上传媒体。');
-  const app = cloudbase.init({ env: envId, region: process.env.NEXT_PUBLIC_CLOUDBASE_REGION || 'ap-shanghai' });
   onProgress?.(0);
-  const { error } = await app.storage.from('moments').uploadToSignedUrl(identity.objectKey, identity.token, file, { contentType: file.type });
-  if (error) throw new Error(`文件上传失败：${error.message}`);
+  const objectKey = await uploadFile(file, onProgress);
   onProgress?.(100);
-  return { objectKey: identity.objectKey, sha256 };
+  return { objectKey, sha256 };
 }

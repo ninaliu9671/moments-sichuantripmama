@@ -11,6 +11,7 @@ const workRoot = resolve(appRoot, '.next-serverless-work');
 const deployRoot = resolve(appRoot, 'dist', 'serverless');
 const staticRoot = resolve(deployRoot, 'static');
 const functionRoot = resolve(deployRoot, 'functions', 'moments-v2');
+const uploadFunctionRoot = resolve(deployRoot, 'functions', 'moments-media-upload');
 const cloudbaseConfig = JSON.parse(readFileSync(resolve(appRoot, 'serverless', 'cloudbaserc.json'), 'utf8'));
 
 function run(command, args, cwd, extraEnv = {}) {
@@ -74,5 +75,6 @@ console.log('Bundling CloudBase function...');
 run(process.execPath, [resolve(here, 'bundle-api.mjs')], appRoot, {
   MOMENTS_FUNCTION_OUTDIR: functionRoot,
 });
+cpSync(resolve(appRoot, 'serverless', 'upload-proxy'), uploadFunctionRoot, { recursive: true });
 cpSync(resolve(appRoot, 'serverless', 'cloudbaserc.json'), resolve(deployRoot, 'cloudbaserc.json'));
 console.log(`CloudBase release ready: ${deployRoot}`);

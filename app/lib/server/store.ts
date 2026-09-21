@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import seed from '../trip-seed.json';
 import type { Member, Trip, Place, Moment, Comment, Reaction, Media } from '../types';
 import { customUserId } from './cloudbase-auth';
+import { normalizeSignedUploadUrl } from './storage-url';
 
 export type PrivateMember = Member & { pinHash: string };
 export type StoredMedia = Media & { ownerId: string; objectKey: string; momentId: string | null };
@@ -92,8 +93,8 @@ export async function createMediaUpload(memberId: string, extension: string) {
   const owner = customUserId(memberId);
   const objectKey = `${owner}/${randomUUID()}${extension}`;
   const { data, error } = await (await pgBucket()).createSignedUploadUrl(objectKey);
-  if (error || !data?.token) throw new Error('无法创建上传凭据', { cause: error });
-  return { objectKey, token: data.token };
+  if (error || !data?.token || !data.fullSignedURL) throw new Error('无法创建上传凭据', { cause: error });
+  return { objectKey, token: data.token, uploadUrl: normalizeSignedUploadUrl(data.fullSignedURL, cloudbaseConfig().env) };
 }
 async function readPgMedia(objectKey: string): Promise<Buffer> {
   validatePgObjectKey(objectKey);

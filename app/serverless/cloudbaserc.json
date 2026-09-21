@@ -12,6 +12,21 @@
       "timeout": 60,
       "memorySize": 512,
       "installDependency": false
+    },
+    {
+      "name": "moments-media-upload",
+      "type": "HTTP",
+      "dir": "./functions/moments-media-upload",
+      "handler": "index.main",
+      "runtime": "Nodejs20.19",
+      "timeout": 600,
+      "memorySize": 512,
+      "installDependency": false,
+      "envVariables": {
+        "NODE_ENV": "production",
+        "CLOUDBASE_ENV_ID": "sichuantripmama-d8furc3w318e17b0",
+        "MOMENTS_PUBLIC_URL": "https://sichuantripmama-d8furc3w318e17b0-1491690992.ap-shanghai.app.tcloudbase.com"
+      }
     }
   ],
   "hosting": [
@@ -26,6 +41,7 @@
   "gateway": {
     "routes": [
       { "path": "/api", "target": "function:moments-v2", "enablePathTransmission": true },
+      { "path": "/media-upload", "target": "function:moments-media-upload", "enablePathTransmission": true },
       { "path": "/", "target": "hosting:moments-v2" }
     ]
   }

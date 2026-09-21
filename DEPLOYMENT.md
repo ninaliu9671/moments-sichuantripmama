@@ -1,10 +1,10 @@
 # MOMENTS 新版 CloudBase 部署
 
-新版使用 CloudBase 静态托管、云函数、PostgreSQL REST API 和私有 PG 存储。目标环境是 `sichuantripmama-d8furc3w318e17b0`，云函数名为 `moments-v2`。正式同源入口是 [MOMENTS 四川之旅](https://sichuantripmama-d8furc3w318e17b0-1491690992.ap-shanghai.app.tcloudbase.com/)，由 HTTP 网关同时提供首页和 `/api`。旧版数据库、`media` 桶和静态文件都保留；新应用使用 `public.moments_app_state` 与私有 `moments` 桶。
+新版使用 CloudBase 静态托管、云函数、PostgreSQL REST API 和私有 PG 存储。目标环境是 `sichuantripmama-d8furc3w318e17b0`，业务云函数为 `moments-v2`，媒体上传 HTTP 函数为 `moments-media-upload`。正式同源入口是 [MOMENTS 四川之旅](https://sichuantripmama-d8furc3w318e17b0-1491690992.ap-shanghai.app.tcloudbase.com/)，由 HTTP 网关提供首页、`/api` 和 `/media-upload`。旧版数据库、`media` 桶和静态文件都保留；新应用使用 `public.moments_app_state` 与私有 `moments` 桶。
 
 ## 已采用的服务端鉴权
 
-云函数只使用一枚 CloudBase 服务端 API Key。它通过 PostgreSQL REST API 读写状态表，并为浏览器签发单个对象路径的一次性上传凭据。浏览器拿不到 API Key，不需要 CloudBase 自定义登录私钥，也不需要 PostgreSQL 直连账号。
+业务云函数只使用一枚 CloudBase 服务端 API Key。它通过 PostgreSQL REST API 读写状态表，并签发单个对象路径的一次性上传凭据。媒体上传 HTTP 函数以用户的站点会话向业务云函数取凭据，再把文件流送到私有 PG 存储；浏览器和上传函数都拿不到 API Key。无需 CloudBase 自定义登录私钥或 PostgreSQL 直连账号。
 
 云函数环境变量如下：
 
@@ -45,11 +45,12 @@ npm run build:serverless
 
 发布包位于被 Git 忽略的 `app/dist/serverless/`。密钥只注入这份本地发布包的函数环境配置，不写回跟踪的 `app/serverless/cloudbaserc.json`。
 
-为避免新首页先出现而 API 尚不可用，按以下顺序发布：
+当前 GitHub 仓库没有配置自动部署流水线。GitHub 保存源码；CloudBase 运行已构建并由 CLI 手动上传的版本。推送 `main` 不会自动更新 CloudBase。发布时先核对 GitHub 代码与本地提交，再按以下顺序操作：
 
-1. 部署 `moments-v2` Event 云函数并验证 `/api/health`。函数构建为单文件 CommonJS，网关把 HTTP 请求转成事件。
-2. 创建 `/api` 网关路由并验证状态读取和权限保护。
-3. 上传静态文件并最后创建网关域名的 `/` 托管路由。
+1. 部署 `moments-v2` Event 云函数并验证 `/api/health`。函数构建为单文件 CommonJS，网关把 HTTP 请求转成事件。部署时保留函数内既有的密钥环境变量。
+2. 部署 `moments-media-upload` HTTP 云函数并验证 `/media-upload/health`。它必须以 HTTP 类型运行，网关路由类型为 `WEB_SCF`。CloudBase 默认域名不能通过 `routes add` 手动创建路由；首次可用 `tcb fn deploy moments-media-upload --httpFn --path /media-upload` 建立 `*` 域名路由，再核对路由类型。若 CLI 错建成 `SCF`，用 `tcb routes edit` 将其改为 `WEB_SCF`。
+3. 验证无效会话上传返回 401；随后上传静态文件，让前端切换到新的上传入口。
+4. 在正式首页上传一张合成小图，确认上传、登记成功且未发布瞬间；测试后清理测试媒体。
 
 不要使用 `--prune`，不要删除旧版静态文件、数据库表或 `media` 桶。旧站点静态文件已备份到本机 `app/.data-legacy-static/`。
 
