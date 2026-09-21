@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { State, StoredMedia } from './store';
-import { avatar, checkSecret, currentMember, digest, hashSecret, HttpError, limited, owner, pin, publicMember, requireValue, startSession, text, token, writer, nickname } from './auth';
+import { avatar, checkSecret, currentMember, digest, hashSecret, HttpError, limited, owner, pin, publicMember, requireValue, startSession, text, writer, nickname } from './auth';
 import { emojiOptions } from '../types';
 
 type Input = Record<string, unknown>;
@@ -18,7 +18,7 @@ function doOperation(state: State, request: Request, path: string, body: Input):
   if (method === 'GET' && path === 'public') return { data: { title: state.trip.title, startDate: state.trip.startDate, endDate: state.trip.endDate, initialized: state.members.length > 0, canSetup: !state.members.length } };
   if (method === 'POST' && path.startsWith('auth/') && path !== 'auth/logout') {
     const action = path.slice(5);
-    requireValue(['setup', 'join', 'login', 'recover'].includes(action), '页面不存在。', 404);
+    requireValue(['setup', 'join', 'login'].includes(action), '页面不存在。', 404);
     const name = text(body.name, 24, '昵称'), key = nickname(name);
     const existing = state.members.find(m => nickname(m.name) === key);
     if (action === 'setup' || action === 'join') {
@@ -30,26 +30,18 @@ function doOperation(state: State, request: Request, path: string, body: Input):
       }
       requireValue(!existing, '这个昵称已被使用，请换一个，或用它登录。', 409);
       const image = avatar(body.avatar), secret = pin(body.password);
-      const recoveryCode = token();
-      const member = { id: randomUUID(), name, avatar: image, role: state.members.length === 0 ? 'owner' as const : 'traveler' as const, status: 'active' as const, joinedAt: new Date().toISOString(), pinHash: hashSecret(secret), recoveryHash: hashSecret(recoveryCode) };
+      const member = { id: randomUUID(), name, avatar: image, role: state.members.length === 0 ? 'owner' as const : 'traveler' as const, status: 'active' as const, joinedAt: new Date().toISOString(), pinHash: hashSecret(secret) };
       state.members.push(member);
-      return { data: { user: publicMember(member), recoveryCode }, cookie: startSession(state, member.id) };
+      return { data: { user: publicMember(member) }, cookie: startSession(state, member.id) };
     }
     const limitKey = `${action}:${digest(key)}`;
     requireValue(!limited(state, limitKey, 5), '尝试过多，请 15 分钟后再试。', 429);
     requireValue(existing && existing.status === 'active', '昵称或密码不正确，或账号已停用。', 403);
     if (action === 'login') {
-      requireValue(checkSecret(text(body.password, 128, '密码'), existing.pinHash), '昵称或密码不正确，请重试或使用恢复码。', 403);
+      requireValue(checkSecret(text(body.password, 128, '密码'), existing.pinHash), '昵称或密码不正确，请重试。', 403);
       delete state.attempts[limitKey];
       return { data: { user: publicMember(existing) }, cookie: startSession(state, existing.id) };
     }
-    const recovery = text(body.recoveryCode, 100, '恢复码'), newPassword = pin(body.password);
-    requireValue(checkSecret(recovery, existing.recoveryHash), '恢复码不正确或已使用。', 403);
-    const recoveryCode = token();
-    existing.pinHash = hashSecret(newPassword); existing.recoveryHash = hashSecret(recoveryCode);
-    state.sessions = state.sessions.filter(s => s.memberId !== existing.id);
-    delete state.attempts[limitKey]; delete state.attempts[`login:${digest(key)}`];
-    return { data: { user: publicMember(existing), recoveryCode }, cookie: startSession(state, existing.id) };
   }
   if (method === 'POST' && path === 'auth/logout') {
     const raw = /(?:^|;\s*)moments_session=([^;]+)/.exec(request.headers.get('cookie') || '')?.[1] || '';

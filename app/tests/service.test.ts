@@ -121,17 +121,14 @@ test('five wrong PINs persist and the sixth attempt is throttled even with the c
   assert.equal(state.attempts[`login:${digest(family.user.name.toLowerCase())}`], undefined);
 });
 
-test('recovery is single-use, changes PIN, and invalidates all prior sessions immediately', () => {
-  const { state, family } = fixture();
-  const result = call(state, 'POST', 'auth/recover', { token: state.invite.token, name: family.user.name, recoveryCode: family.recoveryCode, password: 'test2468' });
-  const recovered = success<AuthResult>(result);
-  assert.ok(recovered.recoveryCode);
-  assert.notEqual(recovered.recoveryCode, family.recoveryCode);
-  rejected(call(state, 'GET', 'snapshot', {}, family.cookie), 401);
-  success(call(state, 'GET', 'snapshot', {}, result.cookie));
-  rejected(call(state, 'POST', 'auth/recover', { token: state.invite.token, name: family.user.name, recoveryCode: family.recoveryCode, password: 'test1111' }), 403);
-  rejected(call(state, 'POST', 'auth/login', { token: state.invite.token, name: family.user.name, password: 'test5678' }), 403);
-  success(call(state, 'POST', 'auth/login', { token: state.invite.token, name: family.user.name, password: 'test2468' }));
+test('only initial setup needs the setup key; later members join with avatar, nickname, and password', () => {
+  const state = emptyState();
+  rejected(call(state, 'POST', 'auth/setup', { name: '主人', avatar: 1, password: 'test1234' }), 403);
+  const owner = success<AuthResult>(call(state, 'POST', 'auth/setup', { setupKey, name: '主人', avatar: 1, password: 'test1234' }));
+  assert.equal(owner.user.role, 'owner');
+  const member = success<AuthResult>(call(state, 'POST', 'auth/join', { name: '家人', avatar: 2, password: 'test5678' }));
+  assert.equal(member.user.role, 'traveler');
+  rejected(call(state, 'POST', 'auth/recover', { name: '家人', password: 'newpass1' }), 404);
 });
 
 test('deactivation immediately revokes cookies; reactivation requires a fresh login', () => {
@@ -146,7 +143,7 @@ test('deactivation immediately revokes cookies; reactivation requires a fresh lo
   success(call(state, 'GET', 'snapshot', {}, login.cookie));
 });
 
-test('snapshots expose no PIN/recovery hashes, invitation secret, session tokens, or private media keys', () => {
+test('snapshots expose no password hashes, invitation secret, session tokens, or private media keys', () => {
   const { state, owner, traveler, family } = fixture();
   const media = { id: 'private-photo', type: 'photo' as const, url: '/api/media/private-photo', duration: 0, name: '照片.jpg', mime: 'image/jpeg', size: 2, sha256: 'checksum', ownerId: traveler.user.id, objectKey: 'secret-cloud-object-key', momentId: null };
   state.media.push(media);
@@ -154,7 +151,7 @@ test('snapshots expose no PIN/recovery hashes, invitation secret, session tokens
   for (const member of [owner, traveler, family]) {
     const data = success<Snapshot>(call(state, 'GET', 'snapshot', {}, member.cookie));
     const json = JSON.stringify(data);
-    for (const forbidden of ['pinHash', 'recoveryHash', 'sessions', 'attempts', 'objectKey', media.objectKey, owner.recoveryCode!, traveler.cookie]) assert.ok(!json.includes(forbidden), forbidden);
+    for (const forbidden of ['pinHash', 'sessions', 'attempts', 'objectKey', media.objectKey, traveler.cookie]) assert.ok(!json.includes(forbidden), forbidden);
     assert.equal(data.moments[0].media[0].url, media.url);
   }
 });

@@ -15,7 +15,6 @@ import {
   MapPinned,
   Sparkles,
   Utensils,
-  X,
 } from 'lucide-react';
 import { cnDate, type Place, type Trip } from '@/lib/types';
 import { getItineraryDetails, itineraryDays, itineraryMapPoints } from '@/lib/itinerary';
@@ -219,10 +218,6 @@ function TodayView({ trip, places, selectedDay, onSelectDay }: Omit<ItineraryVie
                   <ExternalLink aria-hidden="true" />
                   <span>浏览器打开</span>
                 </a>
-                <button ref={pdfCloseRef} type="button" onClick={closePdf}>
-                  <X aria-hidden="true" />
-                  <span>关闭</span>
-                </button>
               </div>
             </header>
             <div className="pdf-preview-pages" aria-label="行程单正文">
@@ -246,7 +241,7 @@ function TodayView({ trip, places, selectedDay, onSelectDay }: Omit<ItineraryVie
               })}
             </div>
             <footer className="pdf-preview-footer">
-              <button type="button" onClick={closePdf}>
+              <button ref={pdfCloseRef} type="button" onClick={closePdf}>
                 <ArrowLeft aria-hidden="true" />
                 返回行程
               </button>

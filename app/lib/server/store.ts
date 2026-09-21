@@ -5,7 +5,7 @@ import seed from '../trip-seed.json';
 import type { Member, Trip, Place, Moment, Comment, Reaction, Media } from '../types';
 import { customUserId } from './cloudbase-auth';
 
-export type PrivateMember = Member & { pinHash: string; recoveryHash: string };
+export type PrivateMember = Member & { pinHash: string };
 export type StoredMedia = Media & { ownerId: string; objectKey: string; momentId: string | null };
 export type State = {
   version: 1; trip: Trip; members: PrivateMember[]; places: Place[];
@@ -16,6 +16,23 @@ export type State = {
 };
 export function emptyState(): State {
   return { version: 1, trip: { id: 'sichuan-2026', title: seed.title, startDate: seed.startDate, endDate: seed.endDate, days: structuredClone(seed.days) }, places: structuredClone(seed.places), members: [], moments: [], comments: [], reactions: [], media: [], sessions: [], invite: { enabled: false, token: '' }, attempts: {} };
+}
+const retiredPlaceSubtitles: Record<string, string> = {
+  chengdu: '抵达、住宿与返程城市，也是几段行程的集散点。',
+  'love-sea': '九寨沟附近的湖泊群景区，行程安排约1小时。',
+  emeishan: '佛教名山，D6登金顶，D7继续游览山中点位。',
+  leshan: 'D7下午游览乐山大佛，可登山近看或提前选择船游。',
+};
+function applyContentUpdates(state: State): void {
+  const currentSubtitles = new Map(seed.places.map(place => [place.id, place.subtitle]));
+  for (const place of state.places) {
+    if (place.subtitle === retiredPlaceSubtitles[place.id]) {
+      place.subtitle = currentSubtitles.get(place.id) ?? place.subtitle;
+    }
+  }
+  for (const member of state.members) {
+    delete (member as PrivateMember & { recoveryHash?: string }).recoveryHash;
+  }
 }
 export function dataDir() { return resolve(process.env.MOMENTS_DATA_DIR || '.data'); }
 function postgresMode() { return process.env.MOMENTS_STORAGE === 'cloudbase-postgres'; }
@@ -113,6 +130,7 @@ export async function transact<T>(fn: (state: State) => T): Promise<T> {
   if (postgresMode()) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const { state, revision } = await readCloudState();
+      applyContentUpdates(state);
       const value = fn(state);
       const payload = JSON.stringify(state);
       if (Buffer.byteLength(payload) > 12 * 1024 * 1024) throw new Error('旅行数据已达到当前容量，请联系管理员扩容后重试。');
@@ -136,6 +154,7 @@ export async function transact<T>(fn: (state: State) => T): Promise<T> {
     let state: State;
     try { state = JSON.parse(await readFile(file, 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; state = emptyState(); }
+    applyContentUpdates(state);
     const value = fn(state);
     const temporary = `${file}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });

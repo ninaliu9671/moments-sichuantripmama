@@ -28,13 +28,13 @@ test('archive rejects missing hash, wrong hash, wrong size, and missing original
 test('archive whitelists public fields, embeds offline data safely and verifies all packaged files', async () => {
   const input = fixture();
   Object.assign(input, { sessions: ['private-session'], inviteToken: 'private-invite' });
-  Object.assign(input.members[0], { pinHash: 'private-pin', recoveryCode: 'private-recovery' });
+  Object.assign(input.members[0], { pinHash: 'private-pin', legacySecret: 'private-legacy-secret' });
   Object.assign(input.trip, { token: 'private-trip-token' });
   Object.assign(input.moments[0].media[0], { storageKey: 'private-storage' });
   const zip = await JSZip.loadAsync(await createArchive(input, async () => original));
   const html = await zip.file('index.html')!.async('string');
   const json = await zip.file('snapshot.json')!.async('string');
-  for (const secret of ['private-session', 'private-invite', 'private-pin', 'private-recovery', 'private-trip-token', 'private-storage', 'secret-url']) {
+  for (const secret of ['private-session', 'private-invite', 'private-pin', 'private-legacy-secret', 'private-trip-token', 'private-storage', 'secret-url']) {
     assert.ok(!html.includes(secret)); assert.ok(!json.includes(secret));
   }
   assert.ok(html.includes('回复 妈妈'));

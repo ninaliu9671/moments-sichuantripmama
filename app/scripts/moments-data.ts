@@ -89,7 +89,6 @@ async function importPreview() {
     // temporary password works for the owner only; all old sessions expire.
     for (const member of state.members) {
       member.pinHash = hashSecret(randomBytes(32).toString('base64url'));
-      member.recoveryHash = hashSecret(randomBytes(32).toString('base64url'));
     }
     owner.pinHash = hashSecret(password);
     for (const item of state.media) {
