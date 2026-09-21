@@ -1,4 +1,5 @@
 import { requireValue } from './auth';
+
 export function validateOrigin(request: Request) {
   const origin = request.headers.get('origin');
   const target = new URL(request.url);

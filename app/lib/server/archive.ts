@@ -14,7 +14,7 @@ async function sequentialMap<T, R>(items: T[], transform: (item: T) => Promise<R
 }
 
 /** A self-contained, versioned private archive. Throws before delivery on any lost or corrupt media. */
-export async function createArchive(snapshot: Snapshot, readMedia: (id: string) => Promise<Uint8Array>): Promise<Uint8Array> {
+export async function createArchive(snapshot: Pick<Snapshot, 'trip' | 'me' | 'members' | 'places' | 'moments' | 'comments' | 'reactions'>, readMedia: (id: string) => Promise<Uint8Array>): Promise<Uint8Array> {
   const zip = new JSZip();
   const files: { path: string; size: number; sha256: string }[] = [];
   const originals = new Map<string, { path: string; sha256: string; size: number }>();

@@ -1,0 +1,32 @@
+{
+  "version": "2.1",
+  "envId": "sichuantripmama-d8furc3w318e17b0",
+  "functionRoot": "./functions",
+  "functions": [
+    {
+      "name": "moments-v2",
+      "type": "Event",
+      "dir": "./functions/moments-v2",
+      "handler": "index.main",
+      "runtime": "Nodejs20.19",
+      "timeout": 60,
+      "memorySize": 512,
+      "installDependency": true
+    }
+  ],
+  "hosting": [
+    {
+      "name": "moments-v2",
+      "root": "./static",
+      "framework": "static",
+      "outputDir": ".",
+      "deployPath": "/"
+    }
+  ],
+  "gateway": {
+    "routes": [
+      { "path": "/api", "target": "function:moments-v2", "enablePathTransmission": true },
+      { "path": "/", "target": "hosting:moments-v2" }
+    ]
+  }
+}

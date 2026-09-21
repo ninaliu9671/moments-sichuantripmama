@@ -1,9 +1,10 @@
 import { validateOrigin } from '@/lib/server/origin';
 import { randomUUID } from 'node:crypto';
 import { operate, snapshot } from '@/lib/server/service';
-import { readMedia, transact, writeMedia, deleteMedia } from '@/lib/server/store';
-import { currentMember, digest, HttpError, owner, requireValue, writer } from '@/lib/server/auth';
+import { inspectUploadedMedia, mediaDeliveryUrl, readMedia, transact, writeMedia, deleteMedia } from '@/lib/server/store';
+import { currentMember, digest, HttpError, requireValue, writer } from '@/lib/server/auth';
 import { createArchive } from '@/lib/server/archive';
+import { createTicket, customUserId, ticketAvailable } from '@/lib/server/cloudbase-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,28 +21,75 @@ async function boundedBody(request: Request, maximum: number) {
   } finally { await reader.cancel(); }
   return Buffer.concat(chunks);
 }
+const SUPPORTED_MEDIA = /^(image\/(jpeg|png|webp|gif|heic|heif)|video\/(mp4|webm|quicktime)|audio\/(mpeg|mp4|wav|x-wav|webm|ogg|aac))(;.*)?$/i;
+
+type MediaType = 'photo' | 'video' | 'audio';
+function mediaTypeOf(mime: string): MediaType {
+  return mime.startsWith('image/') ? 'photo' : mime.startsWith('video/') ? 'video' : 'audio';
+}
+function validateMedia(mime: string, size: number, duration: number) {
+  requireValue(SUPPORTED_MEDIA.test(mime), '暂不支持此格式，请选照片、MP4 视频或常用音频。');
+  requireValue(Number.isFinite(size) && size > 0 && size <= MAX_FILE, '请选择 100MB 以内的照片、视频或语音。');
+  requireValue(Number.isFinite(duration) && duration >= 0, '媒体时长不正确。');
+  if (mime.startsWith('video/')) requireValue(duration > 0 && duration <= 60, '视频需在 1 分钟以内。');
+  if (mime.startsWith('audio/')) requireValue(duration > 0 && duration <= 180, '语音需在 3 分钟以内。');
+}
+
 async function handle(request: Request, context: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await context.params).path.join('/');
     if (!['GET', 'HEAD'].includes(request.method)) {
       validateOrigin(request);
     }
-    if (path === 'health' && request.method === 'GET') return Response.json({ ok: true }, { headers: noCache });
+    if (path === 'health' && request.method === 'GET') {
+      return Response.json({ ok: true, uploadTicket: await ticketAvailable() }, { headers: noCache });
+    }
+    // The browser asks the function for a CloudBase identity, then uploads
+    // straight to storage so the payload never crosses the function.
+    if (path === 'upload-ticket' && request.method === 'POST') {
+      const memberId = await transact(state => { const me = currentMember(state, request); writer(me); return me.id; });
+      return Response.json({ ticket: await createTicket(memberId), userId: customUserId(memberId) }, { headers: noCache });
+    }
     if (path === 'upload' && request.method === 'POST') {
+      const contentType = request.headers.get('content-type') || '';
+      // Preferred path: the browser already stored the file and reports only
+      // its object key, so nothing large travels through the function.
+      if (contentType.includes('application/json')) {
+        const raw = await boundedBody(request, 16 * 1024);
+        let body: Record<string, unknown> = {};
+        try { body = JSON.parse(raw.toString()) as Record<string, unknown>; }
+        catch { throw new HttpError(400, '上传信息无法读取，请重试。'); }
+        const mime = String(body.mime || '');
+        const name = String(body.name || '未命名').slice(0, 200);
+        const size = Number(body.size || 0);
+        const duration = Number(body.duration || 0);
+        validateMedia(mime, size, duration);
+        const objectKey = String(body.objectKey || '');
+        const claimedHash = String(body.sha256 || '').toLowerCase();
+        requireValue(/^[a-f0-9]{64}$/.test(claimedHash), '文件校验信息不正确，请重新上传。');
+        const memberId = await transact(state => { const me = currentMember(state, request); writer(me); return me.id; });
+        const inspected = await inspectUploadedMedia(objectKey, memberId);
+        requireValue(inspected.size === size && inspected.sha256 === claimedHash && (!inspected.mime || inspected.mime.split(';')[0] === mime.split(';')[0]), '上传文件校验失败，请重新上传。', 409);
+        const id = randomUUID();
+        const media = { id, type: mediaTypeOf(mime), url: `/api/media/${id}`, duration, name, mime, size, sha256: inspected.sha256 };
+        await transact(state => {
+          const me = currentMember(state, request); writer(me);
+          requireValue(me.id === memberId, '登录状态已改变，请重试。', 401);
+          requireValue(!state.media.some(item => item.objectKey === objectKey), '这份文件已经登记，请刷新后再试。', 409);
+          state.media.push({ ...media, objectKey, ownerId: me.id, momentId: null });
+        });
+        return Response.json(media, { headers: noCache });
+      }
       const memberId = await transact(state => { const me = currentMember(state, request); writer(me); return me.id; });
       const bytes = await boundedBody(request, MAX_FILE + 1024 * 1024);
-      const form = await new Response(new Uint8Array(bytes), { headers: { 'Content-Type': request.headers.get('content-type') || '' } }).formData();
+      const form = await new Response(new Uint8Array(bytes), { headers: { 'Content-Type': contentType } }).formData();
       const file = form.get('file');
-      requireValue(file instanceof File && file.size > 0 && file.size <= MAX_FILE, '请选择 100MB 以内的照片、视频或语音。');
-      const supported = /^(image\/(jpeg|png|webp|gif|heic|heif)|video\/(mp4|webm|quicktime)|audio\/(mpeg|mp4|wav|x-wav|webm|ogg|aac))(;.*)?$/i;
-      requireValue(supported.test(file.type), '暂不支持此格式，请选照片、MP4 视频或常用音频。');
+      requireValue(file instanceof File && file.size > 0, '请选择 100MB 以内的照片、视频或语音。');
       const duration = Number(form.get('duration') || 0);
-      requireValue(Number.isFinite(duration) && duration >= 0, '媒体时长不正确。');
-      if (file.type.startsWith('video/')) requireValue(duration > 0 && duration <= 60, '视频需在 1 分钟以内。');
-      if (file.type.startsWith('audio/')) requireValue(duration > 0 && duration <= 180, '语音需在 3 分钟以内。');
+      validateMedia(file.type, file.size, duration);
       const content = Buffer.from(await file.arrayBuffer()), id = randomUUID();
       const objectKey = await writeMedia(id, content);
-      const media = { id, type: (file.type.startsWith('image/') ? 'photo' : file.type.startsWith('video/') ? 'video' : 'audio') as 'photo' | 'video' | 'audio', url: `/api/media/${id}`, duration, name: file.name.slice(0, 200), mime: file.type, size: file.size, sha256: digest(content) };
+      const media = { id, type: mediaTypeOf(file.type), url: `/api/media/${id}`, duration, name: file.name.slice(0, 200), mime: file.type, size: file.size, sha256: digest(content) };
       try { await transact(state => { const me = currentMember(state, request); writer(me); requireValue(me.id === memberId, '登录状态已改变，请重试。', 401); state.media.push({ ...media, objectKey, ownerId: me.id, momentId: null }); }); }
       catch (error) { await deleteMedia(objectKey).catch(() => console.error('Media cleanup failed')); throw error; }
       return Response.json(media, { headers: noCache });
@@ -53,6 +101,9 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
         requireValue(item && (item.momentId || item.ownerId === me.id), '媒体不存在或你无权查看。', 404);
         return item;
       });
+      const location = await mediaDeliveryUrl(media.objectKey);
+      if (location) return new Response(null, { status: 302, headers: { ...noCache, Location: location } });
+      requireValue(process.env.MOMENTS_STORAGE !== 'cloudbase-postgres', '暂时无法读取媒体，请联系旅行主人。', 503);
       const content = await readMedia(media.objectKey);
       const headers = { ...noCache, 'Content-Type': media.mime, 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(media.name)}`, 'Accept-Ranges': 'bytes' };
       const range = request.headers.get('range');
@@ -67,8 +118,12 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       return new Response(new Uint8Array(content), { headers: { ...headers, 'Content-Length': String(content.length) } });
     }
     if (path === 'archive' && request.method === 'GET') {
-      const capture = await transact(state => { owner(currentMember(state, request)); return { snapshot: snapshot(state, request), media: state.media }; });
-      const bytes = await createArchive(capture.snapshot, async id => {
+      if (process.env.MOMENTS_STORAGE === 'cloudbase-postgres') {
+        throw new HttpError(409, '完整档案请由旅行主人在电脑上运行备份工具生成；云函数不处理整趟旅行的大文件。');
+      }
+      const capture = await transact(state => { const me = currentMember(state, request); const data = snapshot(state, request); return { data, media: state.media, role: me.role }; });
+      requireValue(capture.role === 'owner', '只有旅行主人可以操作。', 403);
+      const bytes = await createArchive(capture.data, async id => {
         const item = capture.media.find(m => m.id === id); requireValue(item, '有媒体缺失，请重试。', 409); return readMedia(item.objectKey);
       }).catch(() => { throw new HttpError(409, '档案未通过完整性检查：有原始媒体无法读取或校验失败。请稍后重试；若仍失败，请联系旅行主人检查云存储。未生成不完整档案。'); });
       return new Response(Buffer.from(bytes), { headers: { ...noCache, 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="moments-sichuan-${new Date().toISOString().slice(0, 10)}.zip"`, 'Content-Length': String(bytes.length) } });
