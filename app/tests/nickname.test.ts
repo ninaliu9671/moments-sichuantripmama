@@ -4,9 +4,14 @@ import { emptyState } from '../lib/server/store';
 import { operate } from '../lib/server/service';
 test('join without invite, unique normalized nickname, cross-device login and rename', () => {
  const state = emptyState();
+ const setupKey = 'nickname-test-setup-key';
+ process.env.MOMENTS_SETUP_KEY = setupKey;
  const call = (path: string, body: Record<string, unknown>, cookie = '', method = 'POST') => operate(state, new Request('https://moments.test/api/' + path, {method, headers:{cookie:'moments_session='+cookie}}),path,body);
- const first = call('auth/join',{name:'Alice',password:'pass1234',avatar:1});
+ assert.equal(call('auth/join',{name:'Alice',password:'pass1234',avatar:1}).status,403);
+ assert.equal(call('auth/setup',{name:'Alice',password:'pass1234',avatar:1}).status,403);
+ const first = call('auth/setup',{name:'Alice',password:'pass1234',avatar:1,setupKey});
  assert.equal(first.status,undefined);
+ assert.equal(call('auth/setup',{name:'Another',password:'pass1234',avatar:1,setupKey}).status,409);
  assert.equal(call('auth/join',{name:' alice ',password:'pass5678',avatar:2}).status,409);
  const login = call('auth/login',{name:'ALICE',password:'pass1234'});
  assert.ok(login.cookie); assert.notEqual(login.cookie,first.cookie);

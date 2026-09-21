@@ -1,7 +1,7 @@
 // Build CloudBase static hosting and cloud function artifacts without moving
 // tracked source files or overwriting the checked-in function bundle.
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,17 +70,6 @@ try {
 }
 
 mkdirSync(functionRoot, { recursive: true });
-cpSync(resolve(appRoot, '..', 'functions', 'moments', 'index.js'), resolve(functionRoot, 'index.js'));
-cpSync(resolve(appRoot, '..', 'functions', 'moments', 'package.json'), resolve(functionRoot, 'package.json'));
-// CloudBase installs these two external packages remotely. Pin the versions
-// resolved by the repository lockfile so a later deploy cannot drift.
-const functionPackagePath = resolve(functionRoot, 'package.json');
-const functionPackage = JSON.parse(readFileSync(functionPackagePath, 'utf8'));
-for (const name of Object.keys(functionPackage.dependencies)) {
-  const installed = JSON.parse(readFileSync(resolve(appRoot, 'node_modules', name, 'package.json'), 'utf8'));
-  functionPackage.dependencies[name] = installed.version;
-}
-writeFileSync(functionPackagePath, `${JSON.stringify(functionPackage, null, 2)}\n`);
 console.log('Bundling CloudBase function...');
 run(process.execPath, [resolve(here, 'bundle-api.mjs')], appRoot, {
   MOMENTS_FUNCTION_OUTDIR: functionRoot,

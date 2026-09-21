@@ -1,10 +1,9 @@
 import { validateOrigin } from '@/lib/server/origin';
 import { randomUUID } from 'node:crypto';
 import { operate, snapshot } from '@/lib/server/service';
-import { inspectUploadedMedia, mediaDeliveryUrl, readMedia, transact, writeMedia, deleteMedia } from '@/lib/server/store';
+import { cloudStorageAvailable, createMediaUpload, inspectUploadedMedia, mediaDeliveryUrl, readMedia, transact, writeMedia, deleteMedia } from '@/lib/server/store';
 import { currentMember, digest, HttpError, requireValue, writer } from '@/lib/server/auth';
 import { createArchive } from '@/lib/server/archive';
-import { createTicket, customUserId, ticketAvailable } from '@/lib/server/cloudbase-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,6 +21,11 @@ async function boundedBody(request: Request, maximum: number) {
   return Buffer.concat(chunks);
 }
 const SUPPORTED_MEDIA = /^(image\/(jpeg|png|webp|gif|heic|heif)|video\/(mp4|webm|quicktime)|audio\/(mpeg|mp4|wav|x-wav|webm|ogg|aac))(;.*)?$/i;
+const MEDIA_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+  'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/webm': '.webm', 'audio/ogg': '.ogg', 'audio/aac': '.aac',
+};
 
 type MediaType = 'photo' | 'video' | 'audio';
 function mediaTypeOf(mime: string): MediaType {
@@ -42,13 +46,19 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       validateOrigin(request);
     }
     if (path === 'health' && request.method === 'GET') {
-      return Response.json({ ok: true, uploadTicket: await ticketAvailable() }, { headers: noCache });
+      return Response.json({ ok: true, uploadTicket: cloudStorageAvailable() }, { headers: noCache });
     }
-    // The browser asks the function for a CloudBase identity, then uploads
-    // straight to storage so the payload never crosses the function.
+    // The browser asks the function for a one-time signed object upload, so
+    // the media payload never crosses the function.
     if (path === 'upload-ticket' && request.method === 'POST') {
       const memberId = await transact(state => { const me = currentMember(state, request); writer(me); return me.id; });
-      return Response.json({ ticket: await createTicket(memberId), userId: customUserId(memberId) }, { headers: noCache });
+      const raw = await boundedBody(request, 4 * 1024);
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(raw.toString()) as Record<string, unknown>; }
+      catch { throw new HttpError(400, '上传信息无法读取，请重试。'); }
+      const mime = String(body.mime || '').split(';')[0].toLowerCase();
+      requireValue(SUPPORTED_MEDIA.test(mime) && MEDIA_EXTENSIONS[mime], '暂不支持此格式，请选照片、MP4 视频或常用音频。');
+      return Response.json(await createMediaUpload(memberId, MEDIA_EXTENSIONS[mime]), { headers: noCache });
     }
     if (path === 'upload' && request.method === 'POST') {
       const contentType = request.headers.get('content-type') || '';

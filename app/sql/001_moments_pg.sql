@@ -1,21 +1,19 @@
--- Apply with a database administrator before starting the CloudBase function.
--- Only the function's PostgreSQL login needs privileges on moments_private.
+-- Apply through a CloudBase PostgreSQL migration before deploying the function.
 BEGIN;
 
-CREATE SCHEMA IF NOT EXISTS moments_private;
-REVOKE ALL ON SCHEMA moments_private FROM PUBLIC, anon, authenticated;
-
-CREATE TABLE IF NOT EXISTS moments_private.app_state (
+CREATE TABLE IF NOT EXISTS public.moments_app_state (
   id text PRIMARY KEY,
   payload jsonb NOT NULL,
+  revision bigint NOT NULL DEFAULT 0,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-REVOKE ALL ON moments_private.app_state FROM PUBLIC, anon, authenticated;
-ALTER TABLE moments_private.app_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.moments_app_state ADD COLUMN IF NOT EXISTS revision bigint NOT NULL DEFAULT 0;
+REVOKE ALL ON public.moments_app_state FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.moments_app_state TO service_role;
+ALTER TABLE public.moments_app_state ENABLE ROW LEVEL SECURITY;
 
--- The browser's CloudBase identity can upload immutable objects only to its
--- own first-level directory. The service-role API key handles app-authorized
--- downloads and cleanup, and must never be exposed to the browser.
+-- Uploads use one-time signed URLs minted by the function. The service API
+-- key remains server-side and handles inspection, download, and cleanup.
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'moments', 'moments', false, 100 * 1024 * 1024,

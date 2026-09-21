@@ -2,9 +2,8 @@ import { createHash, randomBytes, scryptSync } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pg from 'pg';
 import { customUserId } from '../lib/server/cloudbase-auth';
-import { emptyState, readMedia, uploadImportedMedia, type State } from '../lib/server/store';
+import { emptyState, readCloudState, readMedia, transact, uploadImportedMedia, type State } from '../lib/server/store';
 
 const appRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const previewRoot = join(appRoot, '.data-preview');
@@ -33,17 +32,17 @@ function checkState(value: unknown): asserts value is State {
     if (!Number.isSafeInteger(item.size) || item.size < 1 || item.size > 100 * 1024 * 1024 || !/^[a-f0-9]{64}$/.test(item.sha256)) fail(`媒体 ${item.id} 的完整性元数据无效`);
   }
 }
-async function db() {
-  if (!process.env.DATABASE_URL) fail('需要在管理员电脑设置 DATABASE_URL');
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10_000 });
-  await client.connect();
-  return client;
+function stateEndpoint() {
+  const env = process.env.CLOUDBASE_ENV_ID;
+  const apiKey = process.env.CLOUDBASE_APIKEY || process.env.CLOUDBASE_API_KEY;
+  if (!env || !apiKey) fail('需要设置 CLOUDBASE_ENV_ID 和服务端 CLOUDBASE_APIKEY');
+  return { url: `https://${env}.api.tcloudbasegateway.com/v1/rdb/rest/moments_app_state`, apiKey };
 }
-async function cloudState(client: pg.Client) {
-  const result = await client.query<{ payload: State }>('SELECT payload FROM moments_private.app_state WHERE id = $1', [rowId]);
-  if (!result.rows[0]) fail('数据库未初始化，请先运行 migrate');
-  checkState(result.rows[0].payload);
-  return result.rows[0].payload;
+async function cloudState() {
+  process.env.MOMENTS_STORAGE = 'cloudbase-postgres';
+  const { state } = await readCloudState();
+  checkState(state);
+  return state;
 }
 async function preview() {
   const state = JSON.parse(await readFile(join(previewRoot, 'state.json'), 'utf8')) as unknown;
@@ -58,28 +57,15 @@ async function preview() {
   return { state, files };
 }
 async function migrate() {
-  const appRole = process.env.MOMENTS_DB_APP_ROLE;
-  if (!appRole || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(appRole) || ['anon', 'authenticated', 'service_role', 'postgres'].includes(appRole)) fail('必须设置有效的独立函数数据库账号 MOMENTS_DB_APP_ROLE');
-  const client = await db();
-  try {
-    const sql = await readFile(join(appRoot, 'sql', '001_moments_pg.sql'), 'utf8');
-    await client.query(sql);
-      const role = `"${appRole}"`;
-      await client.query('BEGIN');
-      try {
-        await client.query(`GRANT USAGE ON SCHEMA moments_private, storage TO ${role}`);
-        await client.query(`GRANT SELECT, UPDATE ON moments_private.app_state TO ${role}`);
-        await client.query(`GRANT SELECT ON storage.objects TO ${role}`);
-        await client.query('DROP POLICY IF EXISTS moments_backend_state ON moments_private.app_state');
-        await client.query(`CREATE POLICY moments_backend_state ON moments_private.app_state FOR ALL TO ${role} USING (id = 'sichuan-2026') WITH CHECK (id = 'sichuan-2026')`);
-        await client.query('DROP POLICY IF EXISTS moments_backend_inspect ON storage.objects');
-        await client.query(`CREATE POLICY moments_backend_inspect ON storage.objects FOR SELECT TO ${role} USING (bucket_id = 'moments')`);
-        await client.query('COMMIT');
-      } catch (error) { await client.query('ROLLBACK'); throw error; }
-    await client.query('INSERT INTO moments_private.app_state (id, payload) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO NOTHING', [rowId, JSON.stringify(emptyState())]);
-    const state = await cloudState(client);
-    console.log(`迁移完成。当前状态：${state.members.length} 位成员，${state.moments.length} 条动态。函数数据库账号：${appRole}`);
-  } finally { await client.end(); }
+  const { url, apiKey } = stateEndpoint();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=representation' },
+    body: JSON.stringify([{ id: rowId, payload: emptyState(), revision: 0 }]),
+  });
+  if (!response.ok) fail(`状态初始化失败（HTTP ${response.status}）；请先通过 CloudBase CLI 应用 SQL 迁移`);
+  const state = await cloudState();
+  console.log(`状态表已就绪。当前状态：${state.members.length} 位成员，${state.moments.length} 条动态。`);
 }
 function hashSecret(value: string) {
   const salt = randomBytes(16).toString('hex');
@@ -89,10 +75,9 @@ async function importPreview() {
   const password = process.env.MOMENTS_PREVIEW_PASSWORD;
   if (!password || password.length < 6 || password.length > 128) throw new Error('请设置长度 6–128 的 MOMENTS_PREVIEW_PASSWORD，凭据不得写入仓库');
   const { state: source, files } = await preview();
-  const client = await db();
   const uploaded: string[] = [];
   try {
-    const current = await cloudState(client);
+    const current = await cloudState();
     if (current.members.length || current.moments.length || current.media.length) fail('目标数据库不是空白新版；为保护已有数据，拒绝导入');
     const state = structuredClone(source);
     state.sessions = [];
@@ -123,29 +108,24 @@ async function importPreview() {
       if (cloudBytes.byteLength !== item.size || sha256(cloudBytes) !== item.sha256) fail(`云端预览媒体校验失败：${item.id}`);
       item.objectKey = objectKey;
     }
-    await client.query('BEGIN');
-    const locked = await client.query<{ payload: State }>('SELECT payload FROM moments_private.app_state WHERE id = $1 FOR UPDATE', [rowId]);
-    if (!locked.rows[0] || locked.rows[0].payload.members.length || locked.rows[0].payload.moments.length) fail('导入期间目标数据已发生变化');
-    await client.query('UPDATE moments_private.app_state SET payload = $2::jsonb, updated_at = now() WHERE id = $1', [rowId, JSON.stringify(state)]);
-    await client.query('COMMIT');
-    const imported = await cloudState(client);
+    await transact(target => {
+      if (target.members.length || target.moments.length || target.media.length) fail('导入期间目标数据已发生变化');
+      Object.assign(target, structuredClone(state));
+    });
+    const imported = await cloudState();
     if (imported.moments.length !== 2 || imported.media.length !== 3 || imported.comments.length !== 5 || files.some(file => imported.media.find(m => m.id === file.id)?.sha256 !== file.sha256)) fail('导入后的数量或 SHA-256 不一致');
     console.log(`导入并核验完成：2 条动态、3 个媒体、5 条留言。预览登录昵称：${owner.name}。密码由 MOMENTS_PREVIEW_PASSWORD 提供。`);
   } catch (error) {
-    try { await client.query('ROLLBACK'); } catch { /* no open transaction */ }
     // Uploaded objects are intentionally retained on failure for inspection;
     // a retry refuses overwrites and cannot silently replace any bytes.
     if (uploaded.length) console.error(`导入未完成，已有 ${uploaded.length} 个云端对象需要人工核对。`);
     throw error;
-  } finally { await client.end(); }
+  }
 }
 type Manifest = { format: string; version: number; counts: { members: number; moments: number; media: number; comments: number }; files: { path: string; size: number; sha256: string }[] };
 async function exportData(targetArg?: string) {
   process.env.MOMENTS_STORAGE = 'cloudbase-postgres';
-  const client = await db();
-  let state: State;
-  try { state = await cloudState(client); }
-  finally { await client.end(); }
+  const state = await cloudState();
   const target = resolve(targetArg || join(exportRoot, new Date().toISOString().replace(/[:.]/g, '-')));
   if (!targetArg) await mkdir(exportRoot, { recursive: true, mode: 0o700 });
   await mkdir(target, { recursive: false, mode: 0o700 });

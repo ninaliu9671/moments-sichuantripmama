@@ -1,63 +1,66 @@
 # MOMENTS 新版 CloudBase 部署
 
-新版使用 CloudBase **静态托管 + 云函数 + PostgreSQL + 私有云存储**，目标环境 ID 是 `sichuantripmama-d8furc3w318e17b0`。构建和配置均以 `serverless` 分支为准。旧版数据库表和媒体不迁移；新版使用独立表和 `moments-v2` 云函数。静态站点发布到默认域名的 `/` 后会替换该域名显示的旧首页，因此发布前保留旧站点文件备份。
+新版使用 CloudBase 静态托管、云函数、PostgreSQL REST API 和私有 PG 存储。目标环境是 `sichuantripmama-d8furc3w318e17b0`，云函数名为 `moments-v2`。正式同源入口是 [MOMENTS 四川之旅](https://sichuantripmama-d8furc3w318e17b0-1491690992.ap-shanghai.app.tcloudbase.com/)，由 HTTP 网关同时提供首页和 `/api`。旧版数据库、`media` 桶和静态文件都保留；新应用使用 `public.moments_app_state` 与私有 `moments` 桶。
 
-**先核实环境类型。**CloudBase 的 PostgreSQL 原生存储和 RLS 只在创建时选择 PG 模式的环境可用，传统模式环境不能原地升级。如果上述环境是传统模式，本部署包不能发布到旧环境，需要另一个 PG 模式环境并更新 `app/serverless/cloudbaserc.json` 的 `envId` 后重新构建。CloudBase 当前每个账号只允许 1 个免费环境；在保留旧环境且坚持零月费的条件下，是否有可用的第二个免费账号必须先核实，不能擅自删除旧环境或开通付费套餐。[环境类型说明](https://docs.cloudbase.net/quick-start/env-overview)、[免费额度](https://cloudbase.cloud.tencent.com/pricing)。
+## 已采用的服务端鉴权
 
-## 发布前
+云函数只使用一枚 CloudBase 服务端 API Key。它通过 PostgreSQL REST API 读写状态表，并为浏览器签发单个对象路径的一次性上传凭据。浏览器拿不到 API Key，不需要 CloudBase 自定义登录私钥，也不需要 PostgreSQL 直连账号。
 
-1. 在控制台确认环境是 **PG 模式**、仍是免费体验版、按量付费关闭、资源点尚有余量。不要开通云托管或升级付费套餐。
-2. 按[数据操作说明](docs/cloudbase-data-operations.md)创建独立函数数据库账号，设置管理员终端的 `DATABASE_URL` 与 `MOMENTS_DB_APP_ROLE`，运行 `node --import tsx scripts/moments-data.ts migrate`。它执行[独立状态表迁移](app/sql/001_moments_pg.sql)，创建私有 `moments` 桶和上传 RLS，并给函数账号最小授权。数据库连接凭据只放管理员终端和云函数环境变量中。
-3. 在控制台复核 `moments` 桶保持私有、匿名读写关闭，已启用自定义登录并下载与环境匹配的私钥。
-4. 备份当前默认域名静态托管文件与路由配置，以便出现问题时恢复旧首页；不要删除旧版数据库表或媒体。
+云函数环境变量如下：
 
-## 构建与部署
+| 变量 | 值或用途 |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `MOMENTS_STORAGE` | `cloudbase-postgres` |
+| `CLOUDBASE_ENV_ID` | `sichuantripmama-d8furc3w318e17b0` |
+| `MOMENTS_PUBLIC_URL` | `https://sichuantripmama-d8furc3w318e17b0-1491690992.ap-shanghai.app.tcloudbase.com` |
+| `CLOUDBASE_APIKEY` | 服务端 API Key，只放在函数配置和管理员电脑的忽略目录 |
+| `MOMENTS_SETUP_KEY` | 首位主人启用口令，只放在函数配置和管理员电脑的忽略目录 |
 
-本机用 Node.js 22 或更新版本构建 Next.js；云函数运行时使用 CloudBase 当前稳定的 `Nodejs20.19`。两者版本不同是有意选择，云函数代码按 Node 20 打包。安装依赖后在项目中执行：
+服务端 API Key 当前有效期为 180 天，到期前需要轮换。不要把它放进 Git、静态站点、日志或截图。旧 Key 已撤销。运行 `tcb fn detail --json` 会回显函数环境变量，排障时应先过滤密钥字段。
+首位主人启用口令保存在本机 `app/.data-cloudbase-secrets/setup-key.txt`。注册主人时在“启用口令”栏输入它；注册完成后从函数环境变量移除口令。
+
+## 数据准备
+
+通过 CloudBase CLI 的 PostgreSQL 迁移执行 [app/sql/001_moments_pg.sql](app/sql/001_moments_pg.sql)。它创建受限状态表、私有 `moments` 桶、100 MiB 单文件限制和媒体 MIME 白名单。然后在 `app/` 目录设置 `CLOUDBASE_ENV_ID`、`CLOUDBASE_APIKEY` 并运行：
+
+```powershell
+node --import tsx scripts/moments-data.ts migrate
+```
+
+该命令只补建空白状态行并核验 REST 访问，不要求 `DATABASE_URL`。详细的数据导入和备份命令见 [docs/cloudbase-data-operations.md](docs/cloudbase-data-operations.md)。
+
+## 构建与发布顺序
+
+本机使用 Node.js 22 或更新版本：
 
 ```powershell
 cd app
 npm ci
 npm run typecheck
 npm test
+npm run lint
 npm run build:serverless
 ```
 
-`build:serverless` 把不含 API 路由和服务端模块的源码复制到临时目录后静态导出，再把云函数打包。整个发布包位于被 Git 忽略的 `app/dist/serverless/`，包含 `static/`、`functions/moments-v2/` 和 `cloudbaserc.json`。构建不移动原始 `app/api`，也不覆盖仓库里原有的 `functions/moments/bundle.mjs`。
+发布包位于被 Git 忽略的 `app/dist/serverless/`。密钥只注入这份本地发布包的函数环境配置，不写回跟踪的 `app/serverless/cloudbaserc.json`。
 
-先安装 [CloudBase CLI](https://docs.cloudbase.net/cli-v1/install) 3.8.2 或更新版本并登录，再对发布包执行声明式部署。此配置在同一默认域名上把 `/api` 路由到 `moments-v2` 云函数、`/` 路由到静态托管；`/api` 保留完整子路径供函数识别。先验证资源计划，检查它没有修改旧版数据库及其他路由，再执行发布：
+为避免新首页先出现而 API 尚不可用，按以下顺序发布：
 
-```powershell
-cd app/dist/serverless
-tcb validate
-tcb deploy --dry-run
-tcb deploy
-```
+1. 部署 `moments-v2` Event 云函数并验证 `/api/health`。函数构建为单文件 CommonJS，网关把 HTTP 请求转成事件。
+2. 创建 `/api` 网关路由并验证状态读取和权限保护。
+3. 上传静态文件并最后创建网关域名的 `/` 托管路由。
 
-发布时**不要**使用 `--prune` 清理旧站点文件。CLI 配置不包含密码或密钥，重复发布不会从本地覆盖云函数的秘密环境变量；若 CLI 提示覆盖环境变量，先核对线上值并保留它们。[声明式部署说明](https://docs.cloudbase.net/cli-v1/declarative-deploy/deploy)、[网关路由配置](https://docs.cloudbase.net/cli-v1/gateway)。
-
-## 云函数环境变量
-
-在 CloudBase 控制台为 `moments-v2` 设置以下变量。`MOMENTS_PUBLIC_URL` 使用控制台给出的实际 HTTPS 默认域名；不得写入仓库、构建包、截图或日志。
-
-| 变量 | 用途 |
-| --- | --- |
-| `NODE_ENV=production` | 启用安全 Cookie |
-| `MOMENTS_STORAGE=cloudbase-postgres` | 使用 PostgreSQL 和云存储 |
-| `CLOUDBASE_ENV_ID=sichuantripmama-d8furc3w318e17b0` | 指定环境 |
-| `MOMENTS_PUBLIC_URL=https://<实际默认域名>` | 同源请求校验 |
-| `DATABASE_URL` | PostgreSQL 服务端连接串 |
-| `CLOUDBASE_APIKEY` | 私有云存储服务端 API Key；只存在云函数和管理员电脑 |
-| `MOMENTS_CUSTOM_LOGIN_KEY` | CloudBase 自定义登录的 JSON 私钥，用于限定用户目录直传 |
-
-`MOMENTS_DATABASE_POOL_SIZE` 默认为 5。首次部署后确认环境变量，再请求 `/api/health`。数据库凭据与 `CLOUDBASE_APIKEY` 需要有各自对应的权限，不能使用浏览器的 Publishable Key 代替服务端 Key。
+不要使用 `--prune`，不要删除旧版静态文件、数据库表或 `media` 桶。旧站点静态文件已备份到本机 `app/.data-legacy-static/`。
 
 ## 上线验收
 
-1. 用默认域名访问首页和 `/api/health`；确认 API、页面资源、登录 Cookie 均来自同一域名。
-2. 导入本机预览数据，核对 2 条动态、3 个媒体文件、5 条留言及媒体哈希；使用临时预览账号验证照片、视频、语音、留言、直传和刷新后持久化。
-3. 从管理员电脑生成并校验完整备份，不通过云函数响应传输大型归档。
-4. 用妈妈实际使用的手机和网络测试页面与上传。默认域名可能显示提示中间页，也可能受访问限制，以实测结果为准。
-5. 你确认预览后，先保留本机备份，再只清空新版预览账号与数据；旧版资源不参与清理。随后由你注册正式管理员账号并邀请家人。
+1. 首页与 `/api/health` 均通过上述 HTTP 网关域名访问，健康响应包含 `ok: true` 与 `uploadTicket: true`。旧静态托管 CDN 域名会将页面跳转到正式入口；不要将它作为正式入口分享。
+2. 由旅行主人本人尽快在正式入口注册首位账号；此账号会获得主人权限。刷新页面后账号和状态应仍存在。
+3. 上传一张小图片，确认登记、私有签名读取和刷新后展示正常。
+4. 验证邀请登录、动态、留言、反应和退出登录。
+5. 用实际手机网络复测首页和图片上传。
+6. 从管理员电脑生成并验证私人完整备份。
 
-免费体验版资源点用完会停止访问。上线后定期查看用量与续期时间，尤其留意视频带来的存储和流量消耗。[CloudBase 免费版规则](https://cloud.tencent.com/document/product/876/75213)。
+免费体验版资源点耗尽会停止访问，应定期查看用量和 `2027-03-19` 前的续期安排。
+CloudBase 测试域名可能先显示“页面访问提示”，访问者需要自行点击“确定访问”。

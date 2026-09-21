@@ -11,7 +11,7 @@
       "runtime": "Nodejs20.19",
       "timeout": 60,
       "memorySize": 512,
-      "installDependency": true
+      "installDependency": false
     }
   ],
   "hosting": [

@@ -22,6 +22,12 @@ function doOperation(state: State, request: Request, path: string, body: Input):
     const name = text(body.name, 24, '昵称'), key = nickname(name);
     const existing = state.members.find(m => nickname(m.name) === key);
     if (action === 'setup' || action === 'join') {
+      if (state.members.length === 0) {
+        const setupKey = process.env.MOMENTS_SETUP_KEY;
+        requireValue(action === 'setup' && setupKey && body.setupKey === setupKey, '请输入旅行主人的启用口令。', 403);
+      } else {
+        requireValue(action !== 'setup', '旅行空间已经开启，请选择加入旅行。', 409);
+      }
       requireValue(!existing, '这个昵称已被使用，请换一个，或用它登录。', 409);
       const image = avatar(body.avatar), secret = pin(body.password);
       const recoveryCode = token();

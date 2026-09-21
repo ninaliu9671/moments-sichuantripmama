@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   output: serverless ? 'export' : 'standalone',
   trailingSlash: serverless,
   images: { unoptimized: true },
-  serverExternalPackages: serverless ? [] : ['@cloudbase/node-sdk', 'pg'],
+  serverExternalPackages: [],
   poweredByHeader: false,
   ...(serverless ? {} : { async headers() { return [{ source: '/:path*', headers: serverHeaders }]; } }),
 };
