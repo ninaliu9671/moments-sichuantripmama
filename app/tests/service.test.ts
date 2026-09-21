@@ -85,6 +85,31 @@ test('only the author may edit/delete, including against owner; demotion takes e
   assert.equal(state.moments.length, 0);
 });
 
+test('a moment can be backdated and corrected while retaining its real creation timestamp', () => {
+  const { state, owner } = fixture();
+  const selected = '2026-09-21T04:37:00.000Z';
+  const moment = success<Moment>(call(state, 'POST', 'moments', { text: '补记上午的风景', mediaIds: [], occurredAt: selected }, owner.cookie));
+  assert.equal(moment.createdAt, selected);
+  assert.ok(moment.recordedAt && Date.parse(moment.recordedAt) >= Date.parse(selected));
+  assert.equal(moment.updatedAt, moment.recordedAt);
+  const corrected = '2026-09-20T11:05:00.000Z';
+  const updated = success<Moment>(call(state, 'PATCH', `moments/${moment.id}`, { text: '更正时间', mediaIds: [], occurredAt: corrected }, owner.cookie));
+  assert.equal(updated.createdAt, corrected);
+  assert.equal(updated.recordedAt, moment.recordedAt);
+  const unchanged = success<Moment>(call(state, 'PATCH', `moments/${moment.id}`, { text: '只修改文字', mediaIds: [] }, owner.cookie));
+  assert.equal(unchanged.createdAt, corrected);
+  assert.equal(unchanged.recordedAt, moment.recordedAt);
+});
+
+test('moment timestamps reject impossible, malformed, and future choices', () => {
+  const { state, owner } = fixture();
+  for (const occurredAt of ['2026-02-30T04:37:00.000Z', '2026-09-21T12:00', new Date(Date.now() + 3600000).toISOString()]) {
+    rejected(call(state, 'POST', 'moments', { text: '时间错误', mediaIds: [], occurredAt }, owner.cookie), 400);
+  }
+  const current = record(state, owner.cookie);
+  assert.equal(current.createdAt, current.recordedAt);
+});
+
 test('family comments and reactions work, replies stay on the same moment and one level deep', () => {
   const { state, owner, traveler, family } = fixture();
   const first = record(state, traveler.cookie);

@@ -113,7 +113,14 @@ function doOperation(state: State, request: Request, path: string, body: Input):
       placeId = place.id;
     }
     const now = new Date().toISOString();
-    const moment = { id: existing?.id || randomUUID(), authorId: me.id, text: content, placeId: placeId as string | null, subplace, media: media.map(publicMedia), createdAt: existing?.createdAt || now, updatedAt: now };
+    let occurredAt: string | undefined;
+    if (body.occurredAt !== undefined) {
+      requireValue(typeof body.occurredAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(body.occurredAt), '请选择有效的记录时间。');
+      const parsed = new Date(body.occurredAt);
+      requireValue(!Number.isNaN(parsed.getTime()) && parsed.toISOString() === body.occurredAt && parsed.getTime() <= Date.now(), '记录时间不能晚于现在。');
+      occurredAt = body.occurredAt;
+    }
+    const moment = { id: existing?.id || randomUUID(), authorId: me.id, text: content, placeId: placeId as string | null, subplace, media: media.map(publicMedia), createdAt: occurredAt || existing?.createdAt || now, recordedAt: existing?.recordedAt || existing?.createdAt || now, updatedAt: now };
     state.media.forEach(m => { if (m.momentId === moment.id) m.momentId = null; });
     media.forEach(m => { m.momentId = moment.id; });
     if (existing) state.moments[state.moments.indexOf(existing)] = moment; else state.moments.unshift(moment);
