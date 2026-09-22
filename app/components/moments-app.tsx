@@ -21,7 +21,8 @@ const roles = { owner: '系统管理员', traveler: '旅行者', family: '亲友
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="form-label"><span>{label}</span>{children}</label>; }
 function MediaView({ media }: { media: Media }) {
  const source = apiUrl(media.url);
- return media.type === 'photo' ? <img className="moment-photo" src={source} alt={media.name || '这趟旅行照片'} loading="lazy" /> : media.type === 'video' ? <video className="moment-video" controls preload="metadata" crossOrigin="use-credentials" poster={media.posterUrl && apiUrl(media.posterUrl)} src={source} /> : <div className="audio-wrap"><span>声音里的旅行</span><audio controls preload="metadata" src={source} /></div>;
+ const [playbackError, setPlaybackError] = useState(false);
+ return media.type === 'photo' ? <img className="moment-photo" src={source} alt={media.name || '这趟旅行照片'} loading="lazy" /> : media.type === 'video' ? <div><video className="moment-video" controls playsInline preload="metadata" poster={media.posterUrl && apiUrl(media.posterUrl)} src={source} onError={() => setPlaybackError(true)} onLoadedData={() => setPlaybackError(false)} />{playbackError && <p className="video-playback-error" role="alert">当前浏览器无法播放这段视频。<a href={source} target="_blank" rel="noreferrer">打开原视频</a>，或换一个浏览器试试。</p>}</div> : <div className="audio-wrap"><span>声音里的旅行</span><audio controls preload="metadata" src={source} /></div>;
 }
 
 export default function MomentsApp() {
