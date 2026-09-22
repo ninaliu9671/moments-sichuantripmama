@@ -20,8 +20,8 @@ function rejected(result: Result, status: number) {
   assert.equal(result.status, status, JSON.stringify(result.data));
   assert.ok((result.data as { error?: string }).error);
 }
-function identity(state: State, name: string) {
-  const result = call(state, 'POST', 'auth/join', { token: state.invite.token, name, avatar: 2, password: 'test5678' });
+function identity(state: State, name: string, role: 'traveler' | 'family' = 'traveler') {
+  const result = call(state, 'POST', 'auth/join', { token: state.invite.token, name, role, avatar: 2, password: 'test5678' });
   const auth = success<AuthResult>(result);
   assert.ok(result.cookie);
   return { ...auth, cookie: result.cookie };
@@ -32,9 +32,7 @@ function fixture() {
   const owner = { ...success<AuthResult>(result), cookie: result.cookie! };
   const traveler = identity(state, '同行家人');
   success(call(state, 'PATCH', `members/${traveler.user.id}`, { role: 'traveler' }, owner.cookie));
-  const family = identity(state, '远方亲友');
-  success(call(state, 'PATCH', `members/${family.user.id}`, { role: 'family' }, owner.cookie));
-  family.user.role = 'family';
+  const family = identity(state, '远方亲友', 'family');
   return { state, owner, traveler, family };
 }
 function record(state: State, cookie: string, text = '今天看到了好风景') {
@@ -79,10 +77,23 @@ test('only the author may edit/delete, including against owner; demotion takes e
   assert.equal(updated.createdAt, moment.createdAt);
   success(call(state, 'PATCH', `members/${traveler.user.id}`, { role: 'family' }, owner.cookie));
   rejected(call(state, 'PATCH', `moments/${moment.id}`, { text: '降级后编辑', mediaIds: [] }, traveler.cookie), 403);
-  rejected(call(state, 'DELETE', `moments/${moment.id}`, {}, traveler.cookie), 403);
-  success(call(state, 'PATCH', `members/${traveler.user.id}`, { role: 'traveler' }, owner.cookie));
   success(call(state, 'DELETE', `moments/${moment.id}`, {}, traveler.cookie));
   assert.equal(state.moments.length, 0);
+});
+
+test('deleting an owned moment removes backend records and queues its physical media', () => {
+  const { state, owner, traveler } = fixture();
+  const moment = record(state, traveler.cookie);
+  const media = { id: 'media-1', type: 'photo' as const, url: '/api/media/media-1', duration: 0, name: '照片.jpg', mime: 'image/jpeg', size: 1, sha256: 'a'.repeat(64), ownerId: traveler.user.id, objectKey: 'owned-object', momentId: moment.id };
+  state.media.push(media);
+  state.moments[0].media.push(media);
+  rejected(call(state, 'DELETE', `moments/${moment.id}`, {}, owner.cookie), 403);
+  success(call(state, 'DELETE', `moments/${moment.id}`, {}, traveler.cookie));
+  assert.equal(state.moments.length, 0);
+  assert.equal(state.media.length, 0);
+  assert.deepEqual(state.pendingDeletes, [{ momentId: moment.id, ownerId: traveler.user.id, objectKeys: ['owned-object'] }]);
+  success(call(state, 'DELETE', `moments/${moment.id}`, {}, traveler.cookie));
+  rejected(call(state, 'DELETE', `moments/${moment.id}`, {}, owner.cookie), 403);
 });
 
 test('a moment can be backdated and corrected while retaining its real creation timestamp', () => {
@@ -151,8 +162,12 @@ test('only initial setup needs the setup key; later members join with avatar, ni
   rejected(call(state, 'POST', 'auth/setup', { name: '主人', avatar: 1, password: 'test1234' }), 403);
   const owner = success<AuthResult>(call(state, 'POST', 'auth/setup', { setupKey, name: '主人', avatar: 1, password: 'test1234' }));
   assert.equal(owner.user.role, 'owner');
-  const member = success<AuthResult>(call(state, 'POST', 'auth/join', { name: '家人', avatar: 2, password: 'test5678' }));
+  rejected(call(state, 'POST', 'auth/join', { name: '家人', avatar: 2, password: 'test5678' }), 400);
+  rejected(call(state, 'POST', 'auth/join', { name: '家人', role: 'owner', avatar: 2, password: 'test5678' }), 400);
+  const member = success<AuthResult>(call(state, 'POST', 'auth/join', { name: '家人', role: 'traveler', avatar: 2, password: 'test5678' }));
   assert.equal(member.user.role, 'traveler');
+  const family = success<AuthResult>(call(state, 'POST', 'auth/join', { name: '亲友', role: 'family', avatar: 3, password: 'test5678' }));
+  assert.equal(family.user.role, 'family');
   rejected(call(state, 'POST', 'auth/recover', { name: '家人', password: 'newpass1' }), 404);
 });
 

@@ -39,6 +39,23 @@ function validateMedia(mime: string, size: number, duration: number) {
   if (mime.startsWith('audio/')) requireValue(duration > 0 && duration <= 180, '语音需在 3 分钟以内。');
 }
 
+async function cleanupPendingMedia(momentId?: string) {
+  const pending = await transact(state => (state.pendingDeletes || []).filter(item => !momentId || item.momentId === momentId).map(item => ({ momentId: item.momentId, objectKeys: [...item.objectKeys] })));
+  let failed = false;
+  for (const item of pending) {
+    const results = await Promise.allSettled(item.objectKeys.map(key => deleteMedia(key)));
+    const removed = item.objectKeys.filter((_, index) => results[index].status === 'fulfilled');
+    failed ||= results.some(result => result.status === 'rejected');
+    await transact(state => {
+      const entry = state.pendingDeletes?.find(candidate => candidate.momentId === item.momentId);
+      if (!entry) return;
+      entry.objectKeys = entry.objectKeys.filter(key => !removed.includes(key));
+      if (!entry.objectKeys.length) state.pendingDeletes = state.pendingDeletes?.filter(candidate => candidate !== entry);
+    });
+  }
+  if (failed) throw new HttpError(503, '记录已移除，但云端文件尚未清理完成，请稍后重试删除。');
+}
+
 async function handle(request: Request, context: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await context.params).path.join('/');
@@ -148,6 +165,8 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       }
     }
     const result = await transact(state => operate(state, request, path, body));
+    if ((result.status ?? 200) === 200 && request.method === 'DELETE' && path.startsWith('moments/')) await cleanupPendingMedia(path.slice(8));
+    if (request.method === 'GET' && path === 'snapshot') await cleanupPendingMedia().catch(() => {});
     const headers: Record<string, string> = { ...noCache };
     if (result.cookie !== undefined) headers['Set-Cookie'] = `moments_session=${result.cookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${result.cookie ? 30 * 86400 : 0}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
     return Response.json(result.data, { status: result.status || 200, headers });

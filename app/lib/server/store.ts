@@ -11,12 +11,13 @@ export type StoredMedia = Media & { ownerId: string; objectKey: string; momentId
 export type State = {
   version: 1; trip: Trip; members: PrivateMember[]; places: Place[];
   moments: Moment[]; comments: Comment[]; reactions: Reaction[]; media: StoredMedia[];
+  pendingDeletes?: { momentId: string; ownerId: string; objectKeys: string[] }[];
   sessions: { hash: string; memberId: string; expires: number }[];
   invite: { enabled: boolean; token: string };
   attempts: Record<string, { count: number; until: number }>;
 };
 export function emptyState(): State {
-  return { version: 1, trip: { id: 'sichuan-2026', title: seed.title, startDate: seed.startDate, endDate: seed.endDate, days: structuredClone(seed.days) }, places: structuredClone(seed.places), members: [], moments: [], comments: [], reactions: [], media: [], sessions: [], invite: { enabled: false, token: '' }, attempts: {} };
+  return { version: 1, trip: { id: 'sichuan-2026', title: seed.title, startDate: seed.startDate, endDate: seed.endDate, days: structuredClone(seed.days) }, places: structuredClone(seed.places), members: [], moments: [], comments: [], reactions: [], media: [], pendingDeletes: [], sessions: [], invite: { enabled: false, token: '' }, attempts: {} };
 }
 const retiredPlaceSubtitles: Record<string, string> = {
   chengdu: '抵达、住宿与返程城市，也是几段行程的集散点。',
@@ -185,7 +186,9 @@ export async function deleteMedia(objectKey: string): Promise<void> {
     return;
   }
   if (!/^[\w-]+$/.test(objectKey)) throw new Error('无效的媒体路径');
-  await unlink(join(dataDir(), 'media', objectKey));
+  await unlink(join(dataDir(), 'media', objectKey)).catch(error => {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  });
 }
 // Private PG objects are delivered through time-limited signed URLs, keeping
 // large media out of the cloud function response.

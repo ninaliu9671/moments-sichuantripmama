@@ -12,11 +12,11 @@ test('join without invite, unique normalized nickname, cross-device login and re
  const first = call('auth/setup',{name:'Alice',password:'pass1234',avatar:1,setupKey});
  assert.equal(first.status,undefined);
  assert.equal(call('auth/setup',{name:'Another',password:'pass1234',avatar:1,setupKey}).status,409);
- assert.equal(call('auth/join',{name:' alice ',password:'pass5678',avatar:2}).status,409);
+ assert.equal(call('auth/join',{name:' alice ',password:'pass5678',avatar:2,role:'traveler'}).status,409);
  const login = call('auth/login',{name:'ALICE',password:'pass1234'});
  assert.ok(login.cookie); assert.notEqual(login.cookie,first.cookie);
  assert.equal(call('auth/login',{name:'Alice',password:'incorrect'}).status,403);
- const second = call('auth/join',{name:'Bob',password:'pass5678',avatar:2});
+ const second = call('auth/join',{name:'Bob',password:'pass5678',avatar:2,role:'traveler'});
  assert.equal(state.members[1].role,'traveler');
  assert.equal(call('profile',{name:'ALICE',avatar:2},second.cookie,'PATCH').status,409);
  assert.equal(call('profile',{name:'小山',avatar:2},second.cookie,'PATCH').status,undefined);

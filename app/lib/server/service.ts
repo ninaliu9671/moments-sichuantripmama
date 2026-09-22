@@ -29,8 +29,9 @@ function doOperation(state: State, request: Request, path: string, body: Input):
         requireValue(action !== 'setup', '旅行空间已经开启，请选择加入旅行。', 409);
       }
       requireValue(!existing, '这个昵称已被使用，请换一个，或用它登录。', 409);
+      if (action === 'join') requireValue(body.role === 'traveler' || body.role === 'family', '请选择旅行者或亲友团。');
       const image = avatar(body.avatar), secret = pin(body.password);
-      const member = { id: randomUUID(), name, avatar: image, role: state.members.length === 0 ? 'owner' as const : 'traveler' as const, status: 'active' as const, joinedAt: new Date().toISOString(), pinHash: hashSecret(secret) };
+      const member = { id: randomUUID(), name, avatar: image, role: state.members.length === 0 ? 'owner' as const : body.role as 'traveler' | 'family', status: 'active' as const, joinedAt: new Date().toISOString(), pinHash: hashSecret(secret) };
       state.members.push(member);
       return { data: { user: publicMember(member) }, cookie: startSession(state, member.id) };
     }
@@ -87,14 +88,18 @@ function doOperation(state: State, request: Request, path: string, body: Input):
     return { data: state.trip };
   }
   if ((method === 'POST' && path === 'moments') || (['PATCH', 'DELETE'].includes(method) && path.startsWith('moments/'))) {
-    writer(me);
+    if (method !== 'DELETE') writer(me);
     const existing = path.startsWith('moments/') ? state.moments.find(m => m.id === path.slice(8)) : undefined;
-    if (path !== 'moments') requireValue(existing && existing.authorId === me.id, '只能修改或删除自己的记录。', 403);
+    const pending = method === 'DELETE' ? state.pendingDeletes?.find(item => item.momentId === path.slice(8)) : undefined;
+    if (path !== 'moments') requireValue((existing && existing.authorId === me.id) || (pending && pending.ownerId === me.id), '只能修改或删除自己的记录。', 403);
     if (method === 'DELETE') {
+      if (!existing) return { data: { ok: true } };
+      const objectKeys = state.media.filter(m => m.momentId === existing.id).map(m => m.objectKey);
       state.moments = state.moments.filter(m => m.id !== existing!.id);
       state.comments = state.comments.filter(c => c.momentId !== existing!.id);
       state.reactions = state.reactions.filter(r => r.momentId !== existing!.id);
-      state.media.forEach(m => { if (m.momentId === existing!.id) m.momentId = null; });
+      state.media = state.media.filter(m => m.momentId !== existing!.id);
+      if (objectKeys.length) (state.pendingDeletes ??= []).push({ momentId: existing.id, ownerId: me.id, objectKeys });
       return { data: { ok: true } };
     }
     const content = text(body.text ?? '', 10000, '记录', true), subplace = text(body.subplace ?? '', 80, '细分地点', true);
