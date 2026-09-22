@@ -15,6 +15,7 @@
 **/npm-debug.log*
 **/.codex/
 **/.agents/
+**/.workbuddy/
 asset-production/
 tmp/pdfs/
 *.docx
