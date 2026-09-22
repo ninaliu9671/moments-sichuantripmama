@@ -1,6 +1,6 @@
 import { validateOrigin } from '@/lib/server/origin';
 import { randomUUID } from 'node:crypto';
-import { operate, snapshot } from '@/lib/server/service';
+import { canViewMedia, operate, snapshot } from '@/lib/server/service';
 import { cloudStorageAvailable, createMediaUpload, inspectUploadedMedia, mediaDeliveryUrl, readMedia, transact, writeMedia, deleteMedia } from '@/lib/server/store';
 import { currentMember, digest, HttpError, requireValue, writer } from '@/lib/server/auth';
 import { createArchive } from '@/lib/server/archive';
@@ -125,10 +125,10 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
       const media = await transact(state => {
         const me = currentMember(state, request);
         const item = state.media.find(m => m.id === path.slice(6));
-        requireValue(item && (item.momentId || item.ownerId === me.id), '媒体不存在或你无权查看。', 404);
+        requireValue(item && canViewMedia(state, item, me.id), '媒体不存在或你无权查看。', 404);
         return item;
       });
-      const location = await mediaDeliveryUrl(media.objectKey);
+      const location = await mediaDeliveryUrl(media.objectKey, 300);
       if (location) return new Response(null, { status: 302, headers: { ...noCache, Location: location } });
       requireValue(process.env.MOMENTS_STORAGE !== 'cloudbase-postgres', '暂时无法读取媒体，请联系旅行主人。', 503);
       const content = await readMedia(media.objectKey);
@@ -166,6 +166,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     }
     const result = await transact(state => operate(state, request, path, body));
     if ((result.status ?? 200) === 200 && request.method === 'DELETE' && path.startsWith('moments/')) await cleanupPendingMedia(path.slice(8));
+    if ((result.status ?? 200) === 200 && request.method === 'POST' && path === 'draft/clear') await cleanupPendingMedia();
     if (request.method === 'GET' && path === 'snapshot') await cleanupPendingMedia().catch(() => {});
     const headers: Record<string, string> = { ...noCache };
     if (result.cookie !== undefined) headers['Set-Cookie'] = `moments_session=${result.cookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${result.cookie ? 30 * 86400 : 0}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;

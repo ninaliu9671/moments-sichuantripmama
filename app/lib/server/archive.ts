@@ -30,7 +30,7 @@ export async function createArchive(snapshot: Pick<Snapshot, 'trip' | 'me' | 'me
     members: snapshot.members.map(member),
     places: snapshot.places.map(p => ({ id: p.id, name: p.name, subtitle: p.subtitle, dayIndices: [...p.dayIndices], mapX: p.mapX, mapY: p.mapY, subplaces: [...p.subplaces] })),
     moments: await sequentialMap(snapshot.moments, async m => ({
-      id: m.id, authorId: m.authorId, text: m.text, placeId: m.placeId, subplace: m.subplace, createdAt: m.createdAt, recordedAt: m.recordedAt ?? m.createdAt, updatedAt: m.updatedAt,
+      id: m.id, authorId: m.authorId, text: m.text, placeId: m.placeId, subplace: m.subplace, visibility: m.visibility ?? 'public', createdAt: m.createdAt, recordedAt: m.recordedAt ?? m.createdAt, updatedAt: m.updatedAt,
       media: await sequentialMap(m.media, async media => {
         if (!/^[a-f\d]{64}$/i.test(media.sha256 ?? '')) throw new Error(`媒体 ${media.id} 缺少有效 SHA-256，归档已停止`);
         if (!Number.isSafeInteger(media.size) || media.size < 1) throw new Error(`媒体 ${media.id} 缺少有效大小`);

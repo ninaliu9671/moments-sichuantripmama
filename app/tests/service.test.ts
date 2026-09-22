@@ -2,7 +2,7 @@ import { digest } from '../lib/server/auth';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyState, type State } from '../lib/server/store';
-import { operate, type Result } from '../lib/server/service';
+import { canViewMedia, canViewMoment, operate, type Result } from '../lib/server/service';
 import type { AuthResult, Comment, Moment, Snapshot } from '../lib/types';
 
 const setupKey = 'service-test-initialization-key';
@@ -79,6 +79,68 @@ test('only the author may edit/delete, including against owner; demotion takes e
   rejected(call(state, 'PATCH', `moments/${moment.id}`, { text: '降级后编辑', mediaIds: [] }, traveler.cookie), 403);
   success(call(state, 'DELETE', `moments/${moment.id}`, {}, traveler.cookie));
   assert.equal(state.moments.length, 0);
+});
+
+test('private moments, their activity, and custom places are hidden from other members', () => {
+  const { state, owner, traveler, family } = fixture();
+  const created = success<Moment>(call(state, 'POST', 'moments', { text: '只给自己看的回忆', mediaIds: [], customPlace: '秘密地点', visibility: 'private' }, traveler.cookie));
+  assert.equal(created.visibility, 'private');
+  assert.equal(canViewMoment(created, traveler.user.id), true);
+  assert.equal(canViewMoment(created, owner.user.id), false);
+  const comment = success<Comment>(call(state, 'POST', 'comments', { momentId: created.id, body: '自己的备注' }, traveler.cookie));
+  success(call(state, 'POST', 'reactions', { momentId: created.id, emoji: '❤️' }, traveler.cookie));
+  for (const member of [owner, family]) {
+    const view = success<Snapshot>(call(state, 'GET', 'snapshot', {}, member.cookie));
+    assert.ok(!view.moments.some(moment => moment.id === created.id));
+    assert.ok(!view.comments.some(item => item.id === comment.id));
+    assert.ok(!view.reactions.some(item => item.momentId === created.id));
+    assert.ok(!view.places.some(place => place.name === '秘密地点'));
+    rejected(call(state, 'POST', 'comments', { momentId: created.id, body: '无权限' }, member.cookie), 404);
+    rejected(call(state, 'POST', 'reactions', { momentId: created.id, emoji: '❤️' }, member.cookie), 404);
+  }
+  assert.ok(success<Snapshot>(call(state, 'GET', 'snapshot', {}, traveler.cookie)).moments.some(moment => moment.id === created.id));
+  const publicMoment = success<Moment>(call(state, 'PATCH', `moments/${created.id}`, { text: created.text, mediaIds: [], placeId: created.placeId, visibility: 'public' }, traveler.cookie));
+  assert.equal(publicMoment.visibility, 'public');
+  assert.ok(success<Snapshot>(call(state, 'GET', 'snapshot', {}, family.cookie)).moments.some(moment => moment.id === created.id));
+  assert.ok(success<Snapshot>(call(state, 'GET', 'snapshot', {}, family.cookie)).places.some(place => place.name === '秘密地点'));
+  const privateAgain = success<Moment>(call(state, 'PATCH', `moments/${created.id}`, { text: created.text, mediaIds: [], placeId: created.placeId, visibility: 'private' }, traveler.cookie));
+  assert.equal(privateAgain.visibility, 'private');
+  rejected(call(state, 'PATCH', `moments/${created.id}`, { text: '冒用', mediaIds: [], visibility: 'public' }, owner.cookie), 403);
+  rejected(call(state, 'POST', 'moments', { text: '错误范围', mediaIds: [], visibility: 'friends' }, traveler.cookie), 400);
+  const old = record(state, owner.cookie);
+  delete old.visibility;
+  delete state.moments.find(moment => moment.id === old.id)!.visibility;
+  assert.ok(success<Snapshot>(call(state, 'GET', 'snapshot', {}, family.cookie)).moments.some(moment => moment.id === old.id));
+});
+
+test('clearing a draft only removes its own unpublished media and queues cloud deletion', () => {
+  const { state, owner, traveler } = fixture();
+  const draftMedia = { id: 'draft-media', type: 'photo' as const, url: '/api/media/draft-media', duration: 0, name: '未发布.jpg', mime: 'image/jpeg', size: 1, sha256: 'a'.repeat(64), ownerId: traveler.user.id, objectKey: 'draft-object', momentId: null };
+  const otherMedia = { ...draftMedia, id: 'other-media', ownerId: owner.user.id, objectKey: 'other-object' };
+  state.media.push(draftMedia, otherMedia);
+  rejected(call(state, 'POST', 'draft/clear', { mediaIds: [otherMedia.id] }, traveler.cookie), 403);
+  assert.equal(state.media.length, 2);
+  const published = record(state, traveler.cookie);
+  state.media.push({ ...draftMedia, id: 'published-media', objectKey: 'published-object', momentId: published.id });
+  rejected(call(state, 'POST', 'draft/clear', { mediaIds: ['published-media'] }, traveler.cookie), 403);
+  success(call(state, 'POST', 'draft/clear', { mediaIds: [draftMedia.id] }, traveler.cookie));
+  assert.deepEqual(state.media.map(media => media.id), [otherMedia.id, 'published-media']);
+  assert.deepEqual(state.pendingDeletes?.[0]?.objectKeys, ['draft-object']);
+  success(call(state, 'POST', 'draft/clear', { mediaIds: [draftMedia.id] }, traveler.cookie));
+  assert.equal(state.pendingDeletes?.length, 1);
+});
+
+test('private and unpublished media cannot be read by other members', () => {
+  const { state, owner, traveler } = fixture();
+  const moment = success<Moment>(call(state, 'POST', 'moments', { text: '私密照片', mediaIds: [], visibility: 'private' }, traveler.cookie));
+  const item = { ownerId: traveler.user.id, momentId: moment.id };
+  assert.equal(canViewMedia(state, item, traveler.user.id), true);
+  assert.equal(canViewMedia(state, item, owner.user.id), false);
+  assert.equal(canViewMedia(state, { ...item, momentId: null }, traveler.user.id), true);
+  assert.equal(canViewMedia(state, { ...item, momentId: null }, owner.user.id), false);
+  assert.equal(canViewMedia(state, { ...item, momentId: 'deleted-moment' }, traveler.user.id), false);
+  state.moments[0].visibility = 'public';
+  assert.equal(canViewMedia(state, item, owner.user.id), true);
 });
 
 test('deleting an owned moment removes backend records and queues its physical media', () => {

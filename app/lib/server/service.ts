@@ -1,13 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import type { State, StoredMedia } from './store';
 import { avatar, checkSecret, currentMember, digest, hashSecret, HttpError, limited, owner, pin, publicMember, requireValue, startSession, text, writer, nickname } from './auth';
-import { emojiOptions } from '../types';
+import { emojiOptions, type MomentVisibility } from '../types';
 
 type Input = Record<string, unknown>;
 export type Result = { data: unknown; cookie?: string; status?: number };
+export function canViewMoment(moment: Pick<State['moments'][number], 'authorId' | 'visibility'>, memberId: string) {
+  return moment.visibility !== 'private' || moment.authorId === memberId;
+}
+export function canViewMedia(state: Pick<State, 'moments'>, item: Pick<StoredMedia, 'momentId' | 'ownerId'>, memberId: string) {
+  if (!item.momentId) return item.ownerId === memberId;
+  const moment = state.moments.find(candidate => candidate.id === item.momentId);
+  return Boolean(moment && canViewMoment(moment, memberId));
+}
 export function snapshot(state: State, request: Request) {
   const me = currentMember(state, request);
-  return { trip: state.trip, me: publicMember(me), members: state.members.map(publicMember), places: state.places, moments: state.moments, comments: state.comments, reactions: state.reactions };
+  const moments = state.moments.filter(moment => canViewMoment(moment, me.id));
+  const visibleIds = new Set(moments.map(moment => moment.id));
+  const visiblePlaceIds = new Set(moments.map(moment => moment.placeId));
+  const places = state.places.filter(place => place.subtitle !== '家人添加的地点' || visiblePlaceIds.has(place.id));
+  return { trip: state.trip, me: publicMember(me), members: state.members.map(publicMember), places, moments, comments: state.comments.filter(comment => visibleIds.has(comment.momentId)), reactions: state.reactions.filter(reaction => visibleIds.has(reaction.momentId)) };
 }
 function publicMedia(item: StoredMedia) {
   const { id, type, url, duration, name, mime, size, sha256 } = item;
@@ -103,6 +115,8 @@ function doOperation(state: State, request: Request, path: string, body: Input):
       return { data: { ok: true } };
     }
     const content = text(body.text ?? '', 10000, '记录', true), subplace = text(body.subplace ?? '', 80, '细分地点', true);
+    const visibility = body.visibility ?? existing?.visibility ?? 'public';
+    requireValue(visibility === 'public' || visibility === 'private', '请选择公开或私密。');
     requireValue(Array.isArray(body.mediaIds) && body.mediaIds.length <= 20 && new Set(body.mediaIds).size === body.mediaIds.length, '每条记录最多 20 个媒体，且不能重复。');
     const media = body.mediaIds.map(id => {
       const item = state.media.find(m => m.id === id);
@@ -125,15 +139,28 @@ function doOperation(state: State, request: Request, path: string, body: Input):
       requireValue(!Number.isNaN(parsed.getTime()) && parsed.toISOString() === body.occurredAt && parsed.getTime() <= Date.now(), '记录时间不能晚于现在。');
       occurredAt = body.occurredAt;
     }
-    const moment = { id: existing?.id || randomUUID(), authorId: me.id, text: content, placeId: placeId as string | null, subplace, media: media.map(publicMedia), createdAt: occurredAt || existing?.createdAt || now, recordedAt: existing?.recordedAt || existing?.createdAt || now, updatedAt: now };
+    const moment = { id: existing?.id || randomUUID(), authorId: me.id, text: content, placeId: placeId as string | null, subplace, media: media.map(publicMedia), visibility: visibility as MomentVisibility, createdAt: occurredAt || existing?.createdAt || now, recordedAt: existing?.recordedAt || existing?.createdAt || now, updatedAt: now };
     state.media.forEach(m => { if (m.momentId === moment.id) m.momentId = null; });
     media.forEach(m => { m.momentId = moment.id; });
     if (existing) state.moments[state.moments.indexOf(existing)] = moment; else state.moments.unshift(moment);
     return { data: moment };
   }
+  if (method === 'POST' && path === 'draft/clear') {
+    requireValue(Array.isArray(body.mediaIds) && body.mediaIds.length <= 20 && body.mediaIds.every(id => typeof id === 'string') && new Set(body.mediaIds).size === body.mediaIds.length, '草稿文件信息不正确。');
+    const items = body.mediaIds.flatMap(id => {
+      const item = state.media.find(media => media.id === id);
+      if (!item) return [];
+      requireValue(item.ownerId === me.id && !item.momentId, '只能清空自己尚未发布的草稿文件。', 403);
+      return [item];
+    });
+    const ids = new Set(items.map(item => item.id));
+    state.media = state.media.filter(item => !ids.has(item.id));
+    if (items.length) (state.pendingDeletes ??= []).push({ momentId: `draft-${randomUUID()}`, ownerId: me.id, objectKeys: items.map(item => item.objectKey) });
+    return { data: { ok: true } };
+  }
   if (method === 'POST' && (path === 'comments' || path === 'reactions')) {
     const momentId = text(body.momentId, 80, '记录');
-    requireValue(state.moments.some(m => m.id === momentId), '这条记录已删除，请刷新。', 404);
+    requireValue(state.moments.some(m => m.id === momentId && canViewMoment(m, me.id)), '这条记录不存在或你无权查看。', 404);
     if (path === 'comments') {
       const content = text(body.body, 2000, '评论');
       const parentId = body.parentId || null;
